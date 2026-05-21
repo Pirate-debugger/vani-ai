@@ -1,0 +1,22 @@
+{
+  "name": "vani-ai-backend",
+  "version": "1.0.0",
+  "description": "Express server for Vani AI handling voice synthesis, speech recognition, translation, and chat completion",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "openai": "^4.47.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
