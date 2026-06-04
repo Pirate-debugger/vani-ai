@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, PhoneOff, Sparkles, Volume2, VolumeX, MessageCircle } from 'lucide-react';
 import VoiceOrb from '../components/VoiceOrb';
 
@@ -6,12 +6,20 @@ const Assistant = ({
   currentLang, 
   voiceSpeed,
   voiceRecorder, 
-  onSubmitPrompt 
+  onSubmitPrompt,
+  onEndSession // New prop: navigate away instead of reloading
 }) => {
   const [sessionStatus, setSessionStatus] = useState('Voice Session Active');
   const [orbState, setOrbState] = useState('idle'); // idle, listening, thinking, speaking
   const [captions, setCaptions] = useState('Tap the microphone to start a conversation.');
   const [muted, setMuted] = useState(false);
+
+  // ─── Fix: use a ref so the audioBlob effect always reads latest orbState ─────
+  const orbStateRef = useRef('idle');
+  const setOrbStateSafe = (s) => {
+    orbStateRef.current = s;
+    setOrbState(s);
+  };
 
   const {
     isRecording,
@@ -21,82 +29,84 @@ const Assistant = ({
     audioAnalyser,
     startRecording,
     stopRecording,
-    speakText,
+    speakWithTTS,
     cancelSpeech
   } = voiceRecorder;
 
-  // React to recording state
+  // ─── React to recording state changes ────────────────────────────────────────
   useEffect(() => {
     if (isRecording) {
-      setOrbState('listening');
+      setOrbStateSafe('listening');
       setSessionStatus('Listening...');
       setCaptions('Go ahead, I am listening to your voice...');
       cancelSpeech();
     } else {
-      if (orbState === 'listening') {
-        setOrbState('thinking');
+      // Only transition to thinking if we were previously listening
+      if (orbStateRef.current === 'listening') {
+        setOrbStateSafe('thinking');
         setSessionStatus('Thinking...');
         setCaptions('Processing your request...');
       }
     }
-  }, [isRecording]);
+  }, [isRecording]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Submit audio when blob is ready
+  // ─── Submit audio / transcript when recording finishes ───────────────────────
   useEffect(() => {
     const handleVoiceSubmit = async () => {
       if (!audioBlob) return;
-      
+
+      // transcript is set by useVoiceRecorder after STT resolves (browser or backend)
       const spokenText = transcript.trim() || liveTranscript.trim();
-      
+
       if (!spokenText) {
-        setOrbState('idle');
+        setOrbStateSafe('idle');
         setSessionStatus('Voice Session Active');
-        setCaptions('I couldn\'t catch that. Tap the mic to try again.');
+        setCaptions("I couldn't catch that. Tap the mic to try again.");
         return;
       }
 
-      setOrbState('thinking');
+      setOrbStateSafe('thinking');
       setSessionStatus('Generating Response...');
       setCaptions(`"${spokenText}"`);
 
       try {
         const response = await onSubmitPrompt(spokenText);
-        
-        setOrbState('speaking');
+
+        setOrbStateSafe('speaking');
         setSessionStatus('Speaking...');
         setCaptions(response.response);
 
-        // Vocal Feedback
+        // Prefer real Sarvam TTS audio, fall back to browser synthesis
         if (response.audio_content) {
           const audio = new Audio(`data:audio/wav;base64,${response.audio_content}`);
           audio.play();
           audio.onended = () => {
-            setOrbState('idle');
+            setOrbStateSafe('idle');
             setSessionStatus('Voice Session Active');
           };
         } else {
-          speakText(response.response, currentLang, voiceSpeed, () => {
-            setOrbState('idle');
+          speakWithTTS(response.response, currentLang, voiceSpeed, () => {
+            setOrbStateSafe('idle');
             setSessionStatus('Voice Session Active');
           });
         }
       } catch (err) {
         console.error(err);
-        setOrbState('idle');
+        setOrbStateSafe('idle');
         setSessionStatus('Voice Session Active');
-        setCaptions('Something went wrong. Let\'s try again.');
+        setCaptions("Something went wrong. Let's try again.");
       }
     };
 
     handleVoiceSubmit();
-  }, [audioBlob]);
+  }, [audioBlob]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clean up synthesis on unmount
   useEffect(() => {
     return () => {
       cancelSpeech();
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleMic = () => {
     if (muted) return;
@@ -110,10 +120,25 @@ const Assistant = ({
   const handleToggleMute = () => {
     if (isRecording) stopRecording();
     cancelSpeech();
-    setMuted(!muted);
-    setOrbState('idle');
-    setSessionStatus(muted ? 'Voice Session Active' : 'Assistant Muted');
-    setCaptions(muted ? 'Tap mic to start conversing.' : 'Sound feed muted.');
+    const nextMuted = !muted;
+    setMuted(nextMuted);
+    setOrbStateSafe('idle');
+    setSessionStatus(nextMuted ? 'Assistant Muted' : 'Voice Session Active');
+    setCaptions(nextMuted ? 'Sound feed muted.' : 'Tap mic to start conversing.');
+  };
+
+  // ─── Fix: replace window.location.reload() with clean state reset ────────────
+  const handleEndSession = () => {
+    if (isRecording) stopRecording();
+    cancelSpeech();
+    setOrbStateSafe('idle');
+    setSessionStatus('Voice Session Active');
+    setCaptions('Tap the microphone to start a conversation.');
+    setMuted(false);
+    // Navigate back to home if callback provided, otherwise just reset state
+    if (typeof onEndSession === 'function') {
+      onEndSession();
+    }
   };
 
   return (
@@ -134,7 +159,7 @@ const Assistant = ({
 
         <div className="flex items-center gap-1.5 px-3 py-1 bg-white/5 border border-white/5 rounded-full text-[10px] font-bold text-cyber-cyan shadow-glow-cyan/5">
           <Sparkles size={11} className="animate-pulse" />
-          <span>Gemini Live Mode</span>
+          <span>Vani Live Mode</span>
         </div>
       </div>
 
@@ -158,6 +183,10 @@ const Assistant = ({
           <p className={`text-sm md:text-base font-semibold leading-relaxed transition-all duration-300 ${orbState === 'listening' ? 'text-cyber-cyan/90 animate-pulse' : 'text-white/80'}`}>
             {captions}
           </p>
+          {/* Live transcript overlay while recording */}
+          {isRecording && voiceRecorder.liveTranscript && (
+            <p className="text-xs text-cyber-cyan/60 mt-2 italic">"{voiceRecorder.liveTranscript}"</p>
+          )}
         </div>
       </div>
 
@@ -196,15 +225,11 @@ const Assistant = ({
           )}
         </button>
 
-        {/* End Voice Call Trigger */}
+        {/* End Voice Session — no more page reload */}
         <button
-          onClick={() => {
-            if (isRecording) stopRecording();
-            cancelSpeech();
-            window.location.reload(); // Quick reset back to clean state
-          }}
+          onClick={handleEndSession}
           className="w-14 h-14 rounded-full border border-red-500/20 bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center transition-all cursor-pointer hover:scale-105"
-          title="End Voice Call"
+          title="End Voice Session"
         >
           <PhoneOff size={20} />
         </button>

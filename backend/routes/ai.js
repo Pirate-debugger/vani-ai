@@ -173,7 +173,9 @@ router.post('/chat', async (req, res, next) => {
     const langCode = language_code || 'hi-IN';
     const character = personality || 'respectful';
 
-    const sarvamKey = process.env.SARVAM_API_KEY;
+    // User-supplied key from Settings page takes priority over server env key
+    const userSuppliedKey = req.headers['api-subscription-key'];
+    const sarvamKey = userSuppliedKey || process.env.SARVAM_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
     const geminiKey = process.env.GEMINI_API_KEY;
 
@@ -256,11 +258,9 @@ router.post('/chat', async (req, res, next) => {
     }
 
     if (geminiKey) {
-      console.log(`[LLM Gemini] Generating completion via Gemini API...`);
-      // Gemini can be called via OpenAI compatibility endpoint or Google AI Studio API.
-      // For simplicity, we can call Google's endpoint using standard Axios or standard OpenAI client.
+      console.log(`[LLM Gemini] Generating completion via Gemini 2.5 Flash API...`);
       try {
-        const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${geminiKey}`, {
+        const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
           contents: [{
             parts: [{
               text: `You are Vani AI, a multilingual voice-first digital assistant for Indian users.
@@ -274,7 +274,7 @@ Make it friendly, respectful, and highly concise for a voice speaker (maximum 3-
         if (geminiText) {
           return res.json({
             response: geminiText,
-            model: 'gemini-pro',
+            model: 'gemini-2.5-flash',
             simulated: false
           });
         }

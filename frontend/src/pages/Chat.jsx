@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Mic, Volume2, Sparkles, User, CornerDownLeft, Trash2 } from 'lucide-react';
+import { Send, Mic, MicOff, Volume2, Sparkles, User, Trash2 } from 'lucide-react';
 
 const Chat = ({ 
   currentLang, 
@@ -15,9 +15,13 @@ const Chat = ({
 
   const {
     isRecording,
+    isSttLoading,
+    transcript,
+    liveTranscript,
+    audioBlob,
     startRecording,
     stopRecording,
-    speakText,
+    speakWithTTS,
     cancelSpeech
   } = voiceRecorder;
 
@@ -26,12 +30,25 @@ const Chat = ({
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isThinking]);
 
-  // Handle Text Submission
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!inputText.trim()) return;
+  // ─── Fix: when recording finishes, submit the transcript to AI ───────────────
+  useEffect(() => {
+    const handleVoiceChat = async () => {
+      if (!audioBlob) return;
 
-    const query = inputText.trim();
+      const spokenText = transcript.trim() || liveTranscript.trim();
+      if (!spokenText) return;
+
+      // Submit the spoken text exactly like a typed message
+      await submitMessage(spokenText);
+    };
+
+    handleVoiceChat();
+  }, [audioBlob]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── Shared submit logic for both text and voice ──────────────────────────────
+  const submitMessage = async (query) => {
+    if (!query.trim() || isThinking) return;
+
     setInputText('');
     setIsThinking(true);
 
@@ -46,30 +63,46 @@ const Chat = ({
 
     try {
       const response = await onSubmitPrompt(query);
-      
+
       const aiMsg = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: response.response,
+        model: response.model || (response.simulated ? 'vani-simulator' : 'sarvam'),
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         simulated: response.simulated
       };
 
       setMessages(prev => [...prev, aiMsg]);
-      
-      // Auto speak TTS response
-      speakText(response.response, currentLang, voiceSpeed);
+
+      // Auto-speak TTS response using Sarvam → browser fallback
+      speakWithTTS(response.response, currentLang, voiceSpeed);
 
     } catch (err) {
       console.error('Failed to get answer:', err);
+      setMessages(prev => [...prev, {
+        id: (Date.now() + 2).toString(),
+        role: 'assistant',
+        content: 'Sorry, something went wrong. Please try again.',
+        model: 'error',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        simulated: true
+      }]);
     } finally {
       setIsThinking(false);
     }
   };
 
+  // Handle Text Submission
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!inputText.trim()) return;
+    await submitMessage(inputText.trim());
+  };
+
   // Replay speech synthesizer
   const handleReplay = (text) => {
-    speakText(text, currentLang, voiceSpeed);
+    speakWithTTS(text, currentLang, voiceSpeed);
   };
 
   // Clear chat
@@ -77,6 +110,18 @@ const Chat = ({
     cancelSpeech();
     setMessages([]);
   };
+
+  // ─── Fix: correct model badge label ─────────────────────────────────────────
+  const getModelBadge = (msg) => {
+    if (msg.simulated) return 'Vani·Sim';
+    const m = (msg.model || '').toLowerCase();
+    if (m.includes('sarvam')) return m.includes('105') ? 'Sarvam·105B' : 'Sarvam·30B';
+    if (m.includes('gemini')) return 'Gemini·2.5';
+    if (m.includes('gpt')) return 'GPT·4o';
+    return msg.model || 'AI';
+  };
+
+  const micIsActive = isRecording || isSttLoading;
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#07050F] relative overflow-hidden">
@@ -114,7 +159,7 @@ const Chat = ({
             <div>
               <h3 className="text-base font-extrabold text-white">No active history</h3>
               <p className="text-xs text-white/40 max-w-xs mt-1 leading-relaxed">
-                Type a prompt below or start a vocal conversation by clicking the microphone button.
+                Type a prompt below or tap the microphone to speak your message.
               </p>
             </div>
           </div>
@@ -155,8 +200,9 @@ const Chat = ({
                         <span>{msg.timestamp}</span>
                         {!isUser && (
                           <>
+                            {/* Fix: show actual model name from response */}
                             <span className="text-cyber-cyan/70 font-bold bg-cyber-cyan/5 px-1.5 py-0.5 rounded border border-cyber-cyan/10">
-                              {msg.simulated ? 'Saaras-Bulbul' : 'Mayura:v1'}
+                              {getModelBadge(msg)}
                             </span>
                             <button
                               onClick={() => handleReplay(msg.content)}
@@ -175,14 +221,17 @@ const Chat = ({
               );
             })}
 
-            {/* Simulated typing state */}
-            {isThinking && (
+            {/* Thinking / STT loading indicator */}
+            {(isThinking || isSttLoading) && (
               <div className="flex justify-start animate-pulse">
                 <div className="flex gap-3 items-center">
                   <div className="w-8 h-8 rounded-lg bg-cyber-purple/10 border border-cyber-purple/20 text-cyber-neonPurple flex items-center justify-center font-bold text-xs">
                     V
                   </div>
                   <div className="glass-panel border-white/5 px-5 py-3 rounded-2xl rounded-tl-none flex items-center gap-1.5">
+                    <span className="text-[10px] text-white/40 mr-2">
+                      {isSttLoading ? 'Transcribing...' : 'Thinking...'}
+                    </span>
                     <span className="w-2 h-2 rounded-full bg-cyber-cyan animate-bounce" style={{ animationDelay: '0ms' }} />
                     <span className="w-2 h-2 rounded-full bg-cyber-cyan animate-bounce" style={{ animationDelay: '150ms' }} />
                     <span className="w-2 h-2 rounded-full bg-cyber-cyan animate-bounce" style={{ animationDelay: '300ms' }} />
@@ -198,43 +247,56 @@ const Chat = ({
 
       {/* Floating text input bar */}
       <div className="p-6 border-t border-white/5 glass-panel z-10">
+        {/* Live transcript preview while recording */}
+        {isRecording && liveTranscript && (
+          <div className="max-w-4xl mx-auto mb-3 px-4 py-2 rounded-xl bg-cyber-cyan/5 border border-cyber-cyan/10 text-xs text-cyber-cyan/80 italic">
+            "{liveTranscript}"
+          </div>
+        )}
         <form 
           onSubmit={handleSubmit}
           className="max-w-4xl mx-auto flex items-center gap-4 bg-white/5 border border-white/5 p-2 rounded-2xl focus-within:border-cyber-cyan/20 transition-all shadow-glass relative"
         >
-          {/* Quick Mic trigger */}
+          {/* Mic trigger — now properly submits after recording */}
           <button
             type="button"
             onClick={() => {
-              // Direct navigation or action triggers microphone
               if (isRecording) {
                 stopRecording();
               } else {
                 startRecording();
               }
             }}
+            disabled={isSttLoading}
             className={`
-              p-3.5 rounded-xl flex items-center justify-center cursor-pointer transition-all
-              ${isRecording 
+              p-3.5 rounded-xl flex items-center justify-center cursor-pointer transition-all disabled:opacity-50
+              ${micIsActive
                 ? 'bg-red-500 text-white animate-pulse shadow-md shadow-red-500/20' 
                 : 'bg-white/5 text-white/50 hover:text-white hover:bg-white/10'}
             `}
+            title={isRecording ? 'Stop & send recording' : 'Start voice input'}
           >
-            <Mic size={16} />
+            {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
           </button>
 
           <input 
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder={isRecording ? "Listening to speak..." : "Type your message and press Enter..."}
+            placeholder={
+              isRecording 
+                ? 'Listening... tap mic again to send' 
+                : isSttLoading 
+                ? 'Transcribing audio...' 
+                : 'Type your message and press Enter...'
+            }
             className="flex-1 bg-transparent px-2 text-sm text-white/90 placeholder-white/25 focus:outline-none font-medium"
-            disabled={isRecording}
+            disabled={isRecording || isSttLoading}
           />
 
           <button
             type="submit"
-            disabled={!inputText.trim()}
+            disabled={!inputText.trim() || isThinking}
             className="p-3.5 bg-cyber-purple hover:bg-cyber-purple/80 disabled:opacity-40 disabled:hover:bg-cyber-purple text-white rounded-xl transition-all cursor-pointer flex items-center justify-center"
           >
             <Send size={16} />

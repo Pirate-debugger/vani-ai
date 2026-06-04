@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, Sparkles, Send, VolumeX, ArrowRight, CornerDownLeft } from 'lucide-react';
 import VoiceOrb from '../components/VoiceOrb';
 import SuggestionCards from '../components/SuggestionCards';
@@ -17,6 +17,13 @@ const Home = ({
   const [textInput, setTextInput] = useState('');
   const [isAiThinking, setIsAiThinking] = useState(false);
 
+  // Fix: ref so async callbacks always read the latest orbState (no stale closure)
+  const orbStateRef = useRef('idle');
+  const setOrbStateSafe = (s) => {
+    orbStateRef.current = s;
+    setOrbState(s);
+  };
+
   const {
     isRecording,
     transcript,
@@ -25,23 +32,24 @@ const Home = ({
     audioAnalyser,
     startRecording,
     stopRecording,
-    speakText,
+    speakWithTTS,
     cancelSpeech
   } = voiceRecorder;
 
   // Handle listening state changes
   useEffect(() => {
     if (isRecording) {
-      setOrbState('listening');
+      setOrbStateSafe('listening');
       setStatusText('Listening to you...');
       cancelSpeech();
     } else {
-      if (orbState === 'listening') {
-        setOrbState('thinking');
+      // Only transition if we were listening (avoid overriding thinking/speaking)
+      if (orbStateRef.current === 'listening') {
+        setOrbStateSafe('thinking');
         setStatusText('Vani AI is thinking...');
       }
     }
-  }, [isRecording]);
+  }, [isRecording]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle final recording STT submission
   useEffect(() => {
@@ -74,7 +82,7 @@ const Home = ({
     if (!promptText.trim()) return;
     
     setIsAiThinking(true);
-    setOrbState('thinking');
+    setOrbStateSafe('thinking');
     setStatusText('Thinking...');
 
     // Save user message
@@ -104,20 +112,21 @@ const Home = ({
       setMessages(prev => [...prev, aiMessage]);
       
       // Let AI speak back
-      setOrbState('speaking');
+      setOrbStateSafe('speaking');
       setStatusText('Vani AI is speaking...');
 
-      // If backend gave back pre-synthesized audio, play it, else fall back to browser Speech Synthesis
+      // Prefer backend Sarvam TTS audio, fall back to browser synthesis
       if (aiResponse.audio_content) {
         const audio = new Audio(`data:audio/wav;base64,${aiResponse.audio_content}`);
         audio.play();
         audio.onended = () => {
-          setOrbState('idle');
+          setOrbStateSafe('idle');
           setStatusText('How can Vani AI help you today?');
         };
       } else {
-        speakText(aiResponse.response, currentLang, voiceSpeed, () => {
-          setOrbState('idle');
+        // speakWithTTS: tries Sarvam /api/voice/tts first, then browser fallback
+        speakWithTTS(aiResponse.response, currentLang, voiceSpeed, () => {
+          setOrbStateSafe('idle');
           setStatusText('How can Vani AI help you today?');
         });
       }
@@ -125,7 +134,7 @@ const Home = ({
     } catch (err) {
       console.error('Failed to get AI response:', err);
       setStatusText('Connection error. Please check your setup!');
-      setOrbState('idle');
+      setOrbStateSafe('idle');
     } finally {
       setIsAiThinking(false);
     }
@@ -143,7 +152,7 @@ const Home = ({
   // Stop vocal response manually
   const handleSilenceClick = () => {
     cancelSpeech();
-    setOrbState('idle');
+    setOrbStateSafe('idle');
     setStatusText('How can Vani AI help you today?');
   };
 

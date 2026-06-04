@@ -84,7 +84,7 @@ router.post('/stt', upload.single('file'), async (req, res, next) => {
 
 /**
  * 2. Text-to-Speech Endpoint (/api/voice/tts)
- * Receives text and returns synthesized audio via Sarvam Bulbul v3.
+ * Receives text and returns synthesized audio via Sarvam Bulbul v2.
  */
 router.post('/tts', async (req, res, next) => {
   try {
@@ -95,8 +95,15 @@ router.post('/tts', async (req, res, next) => {
     }
 
     const langCode = target_language_code || 'hi-IN';
-    const chosenSpeaker = speaker || 'shubh'; // default high-quality Hindi speaker
     const chosenPace = speed ? parseFloat(speed) : 1.0;
+
+    // Valid speakers for bulbul:v2: anushka, abhilash, manisha, vidya, arya, karun, hitesh
+    // Pick a good default per language
+    let defaultSpeaker = 'anushka'; // Female Hindi — works for most Indian languages
+    if (langCode.startsWith('ta')) defaultSpeaker = 'arya';
+    else if (langCode.startsWith('en')) defaultSpeaker = 'abhilash';
+    else if (langCode.startsWith('mr')) defaultSpeaker = 'manisha';
+    const chosenSpeaker = speaker || defaultSpeaker;
 
     const apiKey = getSarvamKey();
 
@@ -116,12 +123,13 @@ router.post('/tts', async (req, res, next) => {
     }
 
     // --- PRODUCTION SARVAM TTS CALL ---
-    console.log(`[TTS Production] Synthesizing speech via Sarvam Bulbul v3: "${text.substring(0, 30)}..."`);
+    console.log(`[TTS Production] Synthesizing speech via Sarvam Bulbul v2: "${text.substring(0, 30)}..."`);
     
     const response = await axios.post('https://api.sarvam.ai/text-to-speech', {
       text: text,
       target_language_code: langCode,
       speaker: chosenSpeaker,
+      model: 'bulbul:v2',
       speech_sample_rate: 22050,
       enable_preprocessing: true,
       pace: chosenPace
@@ -132,8 +140,17 @@ router.post('/tts', async (req, res, next) => {
       }
     });
 
-    // Returns a base64 encoded audio string in the payload (usually under response.data.audio_content)
-    return res.json(response.data);
+    const sarvamData = response.data;
+    // Sarvam returns { audios: [base64wav, ...] } — normalize to audio_content
+    const audioContent = sarvamData.audios?.[0] || sarvamData.audio_content || null;
+
+    return res.json({
+      audio_content: audioContent,
+      language_code: langCode,
+      speaker: chosenSpeaker,
+      model: 'bulbul:v2',
+      simulated: false
+    });
 
   } catch (error) {
     console.error('Sarvam TTS Error:', error.response?.data || error.message);

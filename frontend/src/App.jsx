@@ -123,6 +123,7 @@ const App = () => {
             voiceSpeed={voiceSpeed}
             voiceRecorder={voiceRecorder}
             onSubmitPrompt={onSubmitPrompt}
+            onEndSession={() => setActiveTab('home')}
           />
         )}
 
