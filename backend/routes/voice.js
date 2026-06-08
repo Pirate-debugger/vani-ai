@@ -11,8 +11,8 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
-// Helper to check for Sarvam API Key
-const getSarvamKey = () => process.env.SARVAM_API_KEY;
+// Helper to resolve Sarvam API key — session first, then env
+const getSarvamKey = (req) => req?.session?.sarvamKey || process.env.SARVAM_API_KEY;
 
 /**
  * 1. Speech-to-Text Endpoint (/api/voice/stt)
@@ -21,13 +21,13 @@ const getSarvamKey = () => process.env.SARVAM_API_KEY;
 router.post('/stt', upload.single('file'), async (req, res, next) => {
   try {
     const file = req.file;
-    const languageCode = req.body.language_code || 'hi-IN'; // Default to Hindi-India
+    const languageCode = req.body.language_code || 'hi-IN';
 
     if (!file) {
       return res.status(400).json({ error: 'No audio file provided.' });
     }
 
-    const apiKey = getSarvamKey();
+    const apiKey = getSarvamKey(req);
 
     if (!apiKey) {
       // --- SIMULATOR MODE FALLBACK ---
@@ -56,13 +56,14 @@ router.post('/stt', upload.single('file'), async (req, res, next) => {
     console.log(`[STT Production] Processing audio via Sarvam Saaras v3. Language: ${languageCode}`);
     
     const formData = new FormData();
-    // Append the file buffer as a file attachment
     formData.append('file', file.buffer, {
       filename: 'input_audio.wav',
       contentType: file.mimetype || 'audio/wav',
     });
     formData.append('model', 'saaras:v3');
-    formData.append('language_code', languageCode);
+    // Support 'auto' for automatic language detection
+    const sttLang = languageCode === 'auto' ? 'unknown' : languageCode;
+    formData.append('language_code', sttLang);
 
     const response = await axios.post('https://api.sarvam.ai/speech-to-text', formData, {
       headers: {
@@ -71,7 +72,11 @@ router.post('/stt', upload.single('file'), async (req, res, next) => {
       }
     });
 
-    return res.json(response.data);
+    return res.json({
+      ...response.data,
+      detected_language: response.data.language_code || languageCode,
+      requested_language: languageCode
+    });
 
   } catch (error) {
     console.error('Sarvam STT Error:', error.response?.data || error.message);
@@ -105,7 +110,7 @@ router.post('/tts', async (req, res, next) => {
     else if (langCode.startsWith('mr')) defaultSpeaker = 'manisha';
     const chosenSpeaker = speaker || defaultSpeaker;
 
-    const apiKey = getSarvamKey();
+    const apiKey = getSarvamKey(req);
 
     if (!apiKey) {
       // --- SIMULATOR MODE FALLBACK ---
@@ -177,7 +182,7 @@ router.post('/translate', async (req, res, next) => {
     const tgtLang = target_language_code || 'hi-IN';
     const translationMode = mode || 'formal';
 
-    const apiKey = getSarvamKey();
+    const apiKey = getSarvamKey(req);
 
     if (!apiKey) {
       // --- SIMULATOR MODE FALLBACK ---
@@ -240,6 +245,86 @@ router.post('/translate', async (req, res, next) => {
       error: 'Sarvam Translate API Failed',
       details: error.response?.data || error.message
     });
+  }
+});
+
+/**
+ * 4. Bridge Mode Endpoint (/api/voice/bridge)
+ * Full bilingual pipeline: STT(sourceLang) → Translate → LLM(targetLang) → TTS(targetLang)
+ */
+router.post('/bridge', async (req, res, next) => {
+  try {
+    const { audioBase64, sourceLang, targetLang, mimeType } = req.body;
+    const apiKey = getSarvamKey(req);
+
+    if (!apiKey) {
+      return res.status(400).json({
+        error: 'No API key configured. Please add your Sarvam key in Settings.',
+        simulated: true
+      });
+    }
+    if (!audioBase64) return res.status(400).json({ error: 'audioBase64 is required.' });
+
+    // Step 1: STT in sourceLang
+    const audioBuffer = Buffer.from(audioBase64, 'base64');
+    const ext = (mimeType || 'audio/webm').split('/')[1]?.split(';')[0] || 'webm';
+    const sttForm = new FormData();
+    sttForm.append('file', audioBuffer, {
+      filename: `input.${ext}`,
+      contentType: mimeType || 'audio/webm'
+    });
+    sttForm.append('model', 'saaras:v3');
+    sttForm.append('language_code', sourceLang);
+    const sttRes = await axios.post('https://api.sarvam.ai/speech-to-text', sttForm, {
+      headers: { 'api-subscription-key': apiKey, ...sttForm.getHeaders() }
+    });
+    const transcript = sttRes.data.transcript;
+
+    // Step 2: Translate sourceLang → targetLang
+    const translateRes = await axios.post('https://api.sarvam.ai/translate', {
+      input: transcript,
+      source_language_code: sourceLang,
+      target_language_code: targetLang,
+      model: 'mayura:v1',
+      mode: 'formal'
+    }, { headers: { 'api-subscription-key': apiKey, 'Content-Type': 'application/json' } });
+    const translatedText = translateRes.data.translated_text;
+
+    // Step 3: LLM response in targetLang
+    const llmRes = await axios.post('https://api.sarvam.ai/v1/chat/completions', {
+      model: 'sarvam-105b',
+      messages: [
+        {
+          role: 'system',
+          content: `You are Vani AI. Reply in the language of code "${targetLang}". Keep replies under 4 sentences, suitable for voice output.`
+        },
+        { role: 'user', content: translatedText }
+      ],
+      max_tokens: 300,
+      temperature: 0.7
+    }, { headers: { 'api-subscription-key': apiKey, 'Content-Type': 'application/json' } });
+    const llmReply = llmRes.data.choices[0].message.content;
+
+    // Step 4: TTS in targetLang
+    let defaultSpeaker = 'anushka';
+    if (targetLang.startsWith('ta')) defaultSpeaker = 'arya';
+    else if (targetLang.startsWith('en')) defaultSpeaker = 'abhilash';
+    else if (targetLang.startsWith('mr')) defaultSpeaker = 'manisha';
+
+    const ttsRes = await axios.post('https://api.sarvam.ai/text-to-speech', {
+      text: llmReply.substring(0, 500),
+      target_language_code: targetLang,
+      speaker: defaultSpeaker,
+      model: 'bulbul:v2',
+      speech_sample_rate: 22050,
+      enable_preprocessing: true
+    }, { headers: { 'api-subscription-key': apiKey, 'Content-Type': 'application/json' } });
+    const audioContent = ttsRes.data.audios?.[0] || null;
+
+    return res.json({ transcript, translatedText, llmReply, audioContent, sourceLang, targetLang });
+  } catch (err) {
+    console.error('Bridge Mode Error:', err.response?.data || err.message);
+    next(err);
   }
 });
 

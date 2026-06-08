@@ -3,36 +3,51 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 export const useVoiceRecorder = (languageCode = 'hi-IN') => {
-  const [isRecording, setIsRecording] = useState(false);
-  const [transcript, setTranscript] = useState('');
+  const [isRecording, setIsRecording]   = useState(false);
+  const [transcript, setTranscript]     = useState('');
   const [liveTranscript, setLiveTranscript] = useState('');
-  const [audioBlob, setAudioBlob] = useState(null);
+  const [audioBlob, setAudioBlob]       = useState(null);
+  const [audioMimeType, setAudioMimeType] = useState('audio/webm');
   const [isSttLoading, setIsSttLoading] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isSpeaking, setIsSpeaking]     = useState(false);
+
+  // Safari-compatible MIME type detection
+  const getSupportedMimeType = () => {
+    const types = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4',
+      'audio/ogg;codecs=opus',
+      'audio/ogg',
+    ];
+    return types.find(t => MediaRecorder.isTypeSupported(t)) || '';
+  };
 
   // Web Audio elements for visualizer
   const [audioContext, setAudioContext] = useState(null);
-  const [analyser, setAnalyser] = useState(null);
+  const [analyser, setAnalyser]         = useState(null);
 
   // Cached voices list — populated via onvoiceschanged to avoid race condition
   const voicesRef = useRef([]);
 
   const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
-  const recognitionRef = useRef(null);
-  const streamRef = useRef(null);
-  const transcriptRef = useRef('');
-  const currentAudioRef = useRef(null); // Track currently playing audio element
+  const audioChunksRef   = useRef([]);
+  const recognitionRef   = useRef(null);
+  const streamRef        = useRef(null);
+  const transcriptRef    = useRef('');
+  const currentAudioRef  = useRef(null); // Track currently playing audio element
 
-  // ─── Fix: load voices properly using onvoiceschanged event ───────────────────
+  // TTS sentence queue for streaming responses
+  const ttsQueueRef   = useRef([]);
+  const isPlayingRef  = useRef(false);
+
+  // ─── Load voices properly via onvoiceschanged ─────────────────────────────────
   useEffect(() => {
     if (!window.speechSynthesis) return;
-
     const loadVoices = () => {
       const v = window.speechSynthesis.getVoices();
       if (v.length > 0) voicesRef.current = v;
     };
-
     loadVoices();
     window.speechSynthesis.onvoiceschanged = loadVoices;
     return () => { window.speechSynthesis.onvoiceschanged = null; };
@@ -66,9 +81,7 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
       };
 
       rec.onerror = (err) => {
-        if (err.error !== 'no-speech') {
-          console.error('Speech Recognition Error:', err.error);
-        }
+        if (err.error !== 'no-speech') console.error('Speech Recognition Error:', err.error);
       };
 
       recognitionRef.current = rec;
@@ -76,12 +89,13 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
   }, [languageCode]);
 
   // ─── Backend STT fallback ─────────────────────────────────────────────────────
-  const submitAudioToSTT = useCallback(async (blob) => {
+  const submitAudioToSTT = useCallback(async (blob, mimeType) => {
     if (!blob || blob.size < 1000) return null;
     try {
       setIsSttLoading(true);
       const formData = new FormData();
-      formData.append('file', blob, 'audio.webm');
+      const ext = (mimeType || 'audio/webm').split('/')[1]?.split(';')[0] || 'webm';
+      formData.append('file', blob, `audio.${ext}`);
       formData.append('language_code', languageCode);
       const res = await fetch(`${API_BASE}/voice/stt`, { method: 'POST', body: formData });
       if (!res.ok) throw new Error(`STT API error: ${res.status}`);
@@ -95,8 +109,9 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     }
   }, [languageCode]);
 
-  // ─── Start Recording ─────────────────────────────────────────────────────────
+  // ─── Start Recording (with haptic) ──────────────────────────────────────────
   const startRecording = async () => {
+    navigator.vibrate?.(50); // Short haptic pulse on start
     try {
       setTranscript('');
       setLiveTranscript('');
@@ -116,22 +131,21 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
       setAudioContext(ctx);
       setAnalyser(ana);
 
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
+      const mimeType = getSupportedMimeType();
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+      const actualMimeType = mimeType || 'audio/webm';
+      setAudioMimeType(actualMimeType);
+      mediaRecorderRef.current = recorder;
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = mediaRecorder;
-
-      mediaRecorder.ondataavailable = (event) => {
+      recorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) audioChunksRef.current.push(event.data);
       };
 
-      mediaRecorder.onstop = async () => {
-        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+      recorder.onstop = async () => {
+        const blob = new Blob(audioChunksRef.current, { type: actualMimeType });
         const browserTranscript = transcriptRef.current.trim();
         if (!browserTranscript) {
-          const sttResult = await submitAudioToSTT(blob);
+          const sttResult = await submitAudioToSTT(blob, actualMimeType);
           if (sttResult) {
             transcriptRef.current = sttResult;
             setTranscript(sttResult);
@@ -140,7 +154,7 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
         setAudioBlob(blob);
       };
 
-      mediaRecorder.start(200);
+      recorder.start(200);
       if (recognitionRef.current) {
         try { recognitionRef.current.start(); } catch (e) { /* non-fatal */ }
       }
@@ -151,8 +165,9 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     }
   };
 
-  // ─── Stop Recording ───────────────────────────────────────────────────────────
+  // ─── Stop Recording (with haptic) ─────────────────────────────────────────────
   const stopRecording = () => {
+    navigator.vibrate?.([30, 30, 30]); // Triple pulse on stop
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
@@ -177,24 +192,17 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
       currentAudioRef.current.src = '';
       currentAudioRef.current = null;
     }
-    if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
     setIsSpeaking(false);
   };
 
   // ─── speakText: browser SpeechSynthesis with Chrome resume fix ───────────────
   const speakText = (text, langCode = 'hi-IN', speed = 1.0, callback = null) => {
     if (!window.speechSynthesis) {
-      console.warn('Speech synthesis is unsupported.');
       if (callback) callback();
       return;
     }
-
-    // Chrome bug fix: cancel then resume before new utterance
     window.speechSynthesis.cancel();
-
-    // Small delay to let cancel flush before speaking (Chrome quirk)
     setTimeout(() => {
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = langCode;
@@ -205,57 +213,32 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
       const voices = voicesRef.current;
       if (voices.length > 0) {
         let matchingVoice = null;
-        if (langCode.startsWith('hi')) {
-          matchingVoice = voices.find(v => v.lang.startsWith('hi') || v.name.toLowerCase().includes('hindi'));
-        } else if (langCode.startsWith('mr')) {
-          matchingVoice = voices.find(v => v.lang.startsWith('mr') || v.name.toLowerCase().includes('marathi'));
-        } else if (langCode.startsWith('ta')) {
-          matchingVoice = voices.find(v => v.lang.startsWith('ta') || v.name.toLowerCase().includes('tamil'));
-        } else {
-          matchingVoice =
-            voices.find(v => v.lang === 'en-IN') ||
-            voices.find(v => v.name.toLowerCase().includes('india')) ||
-            voices.find(v => v.lang.startsWith('en'));
-        }
+        if (langCode.startsWith('hi')) matchingVoice = voices.find(v => v.lang.startsWith('hi') || v.name.toLowerCase().includes('hindi'));
+        else if (langCode.startsWith('mr')) matchingVoice = voices.find(v => v.lang.startsWith('mr'));
+        else if (langCode.startsWith('ta')) matchingVoice = voices.find(v => v.lang.startsWith('ta') || v.name.toLowerCase().includes('tamil'));
+        else matchingVoice = voices.find(v => v.lang === 'en-IN') || voices.find(v => v.name.toLowerCase().includes('india')) || voices.find(v => v.lang.startsWith('en'));
         if (matchingVoice) utterance.voice = matchingVoice;
       }
 
       utterance.onstart = () => setIsSpeaking(true);
-      utterance.onend = () => {
-        setIsSpeaking(false);
-        if (callback) callback();
-      };
-      utterance.onerror = (err) => {
-        console.error('Speech synthesis error:', err);
-        setIsSpeaking(false);
-        if (callback) callback();
-      };
+      utterance.onend = () => { setIsSpeaking(false); if (callback) callback(); };
+      utterance.onerror = (err) => { console.error('Speech synthesis error:', err); setIsSpeaking(false); if (callback) callback(); };
 
-      // Chrome: must resume if paused
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
+      if (window.speechSynthesis.paused) window.speechSynthesis.resume();
       window.speechSynthesis.speak(utterance);
     }, 100);
   };
 
   // ─── speakWithTTS: Sarvam backend TTS → fallback to browser TTS ──────────────
-  // This is the PRIMARY method to call for voice responses.
   const speakWithTTS = async (text, langCode = 'hi-IN', speed = 1.0, callback = null) => {
-    if (!text || !text.trim()) {
-      if (callback) callback();
-      return;
-    }
-
+    if (!text || !text.trim()) { if (callback) callback(); return; }
     setIsSpeaking(true);
-
     try {
-      // 1. Call backend TTS (Sarvam Bulbul v3 or simulator)
       const res = await fetch(`${API_BASE}/voice/tts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: text.substring(0, 500), // Sarvam limit
+          text: text.substring(0, 500),
           target_language_code: langCode,
           speed: parseFloat(speed) || 1.0,
         }),
@@ -263,41 +246,117 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
 
       if (res.ok) {
         const data = await res.json();
-
         if (data.audio_content) {
-          // 2a. Sarvam returned real synthesized audio — play it directly
-          console.log('[TTS] Playing Sarvam Bulbul v3 audio');
           const audio = new Audio(`data:audio/wav;base64,${data.audio_content}`);
           currentAudioRef.current = audio;
-
-          audio.onended = () => {
-            currentAudioRef.current = null;
-            setIsSpeaking(false);
-            if (callback) callback();
-          };
-          audio.onerror = () => {
-            console.warn('[TTS] Audio play failed, falling back to browser TTS');
-            currentAudioRef.current = null;
-            speakText(text, langCode, speed, callback);
-          };
-
-          await audio.play().catch(() => {
-            // Play promise rejected — use browser TTS
-            speakText(text, langCode, speed, callback);
-          });
+          audio.onended = () => { currentAudioRef.current = null; setIsSpeaking(false); if (callback) callback(); };
+          audio.onerror = () => { currentAudioRef.current = null; speakText(text, langCode, speed, callback); };
+          await audio.play().catch(() => speakText(text, langCode, speed, callback));
           return;
         }
-
-        // 2b. Simulated TTS (no API key) — use browser TTS
-        console.log('[TTS] Simulator mode — using browser speech synthesis');
       }
     } catch (err) {
       console.warn('[TTS] Backend TTS request failed:', err.message);
     }
-
-    // 3. Fallback: browser Web Speech API
     speakText(text, langCode, speed, callback);
   };
+
+  // ─── TTS sentence queue for streaming responses ───────────────────────────────
+  const playNextInQueue = useCallback(async (langCode, speed) => {
+    if (isPlayingRef.current || ttsQueueRef.current.length === 0) return;
+    isPlayingRef.current = true;
+    const sentence = ttsQueueRef.current.shift();
+    await new Promise((resolve) => {
+      speakWithTTS(sentence, langCode, speed, resolve);
+    });
+    isPlayingRef.current = false;
+    playNextInQueue(langCode, speed);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const clearTTSQueue = useCallback(() => {
+    ttsQueueRef.current = [];
+    isPlayingRef.current = false;
+  }, []);
+
+  /**
+   * streamAndSpeak — calls /api/ai/chat-stream (SSE) and:
+   *   1. Streams tokens to onToken(text) for live display
+   *   2. Pipes sentence-boundary chunks to TTS queue for sequential speech
+   *   3. Calls onDone() when stream completes
+   */
+  const streamAndSpeak = useCallback(async ({
+    messages,
+    langCode = 'hi-IN',
+    speed = 1.0,
+    onToken,
+    onTTSSentence,
+    onDone,
+  }) => {
+    clearTTSQueue();
+    cancelSpeech();
+
+    try {
+      const response = await fetch(`${API_BASE}/ai/chat-stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ messages, language_code: langCode })
+      });
+
+      if (!response.ok) throw new Error(`Stream failed: ${response.status}`);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          const raw = line.replace('data: ', '').trim();
+          if (raw === '[DONE]') { if (onDone) onDone(); return; }
+
+          try {
+            const data = JSON.parse(raw);
+            if (data.token && onToken) onToken(data.token);
+            if (data.tts_sentence) {
+              ttsQueueRef.current.push(data.tts_sentence);
+              playNextInQueue(langCode, speed);
+              if (onTTSSentence) onTTSSentence(data.tts_sentence);
+            }
+          } catch {}
+        }
+      }
+      if (onDone) onDone();
+    } catch (err) {
+      console.error('[streamAndSpeak] Error:', err);
+      if (onDone) onDone();
+    }
+  }, [clearTTSQueue, playNextInQueue]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * setExternalAudioBlob — allows VAD to inject audio from Float32Array/WAV blob
+   */
+  const setExternalAudioBlob = useCallback(async (blob) => {
+    if (!blob) return;
+    const mimeType = 'audio/wav';
+    setAudioMimeType(mimeType);
+    const sttResult = await submitAudioToSTT(blob, mimeType);
+    if (sttResult) {
+      transcriptRef.current = sttResult;
+      setTranscript(sttResult);
+    }
+    setAudioBlob(blob);
+  }, [submitAudioToSTT]);
+
+  // resetAudioBlob — allows components to clear blob after processing
+  const resetAudioBlob = useCallback(() => setAudioBlob(null), []);
 
   return {
     isRecording,
@@ -306,11 +365,16 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     transcript,
     liveTranscript,
     audioBlob,
+    audioMimeType,
     audioAnalyser: analyser,
     startRecording,
     stopRecording,
-    speakText,        // Browser-only (kept for compatibility)
-    speakWithTTS,     // PRIMARY: Sarvam backend → browser fallback
-    cancelSpeech
+    resetAudioBlob,
+    speakText,
+    speakWithTTS,
+    cancelSpeech,
+    streamAndSpeak,
+    clearTTSQueue,
+    setExternalAudioBlob,
   };
 };

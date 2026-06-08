@@ -126,6 +126,38 @@
   background: rgba(0, 255, 255, 0.3);
 }
 
+/* ─── Responsive utilities ────────────────────────────────────────────────── */
+
+/* Hide scrollbar while keeping scroll functionality */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* iPhone notch / home bar safe area */
+.safe-area-bottom {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+/* Prevent text selection on interactive elements */
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Smooth momentum scroll on iOS */
+.ios-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Touch-friendly tap highlight removal */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Glowing text effects */
 .text-glow-cyan {
   text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
@@ -133,4 +165,42 @@
 
 .text-glow-purple {
   text-shadow: 0 0 10px rgba(189, 0, 255, 0.5);
+}
+
+/* ─── Streaming text cursor (Assistant page) ─────────────────────────────── */
+.streaming-text::after {
+  content: '▋';
+  animation: blink-cursor 0.7s step-end infinite;
+  color: #00F0FF;
+  margin-left: 2px;
+}
+
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+/* ─── Word fade-in for live transcript ───────────────────────────────────── */
+.word-fade {
+  animation: word-appear 0.15s ease forwards;
+  opacity: 0;
+  display: inline;
+}
+
+@keyframes word-appear {
+  to { opacity: 1; }
+}
+
+/* ─── Glow button utility ────────────────────────────────────────────────── */
+.btn-glow {
+  background: linear-gradient(135deg, rgba(138,43,226,0.8), rgba(0,240,255,0.6));
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.2), 0 0 40px rgba(138, 43, 226, 0.15);
+  transition: all 0.3s ease;
+}
+.btn-glow:hover {
+  box-shadow: 0 0 30px rgba(0, 240, 255, 0.35), 0 0 60px rgba(138, 43, 226, 0.25);
+  transform: translateY(-1px);
+}
+.btn-glow:active {
+  transform: translateY(0);
 }

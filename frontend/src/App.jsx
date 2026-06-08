@@ -1,101 +1,152 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { useAuth } from './hooks/useAuth';
+import { ChatHistoryProvider, useChatHistory } from './context/ChatHistoryContext';
 import Sidebar from './components/Sidebar';
 import Home from './pages/Home';
 import Chat from './pages/Chat';
 import Assistant from './pages/Assistant';
 import Settings from './pages/Settings';
+import Login from './pages/Login';
 import { useVoiceRecorder } from './hooks/useVoiceRecorder';
+import { Sparkles } from 'lucide-react';
 
-const App = () => {
-  // Navigation State
-  const [activeTab, setActiveTab] = useState('home');
+// Simulator Mode Banner
+const SimulatorBanner = () => (
+  <div className="w-full px-4 py-1.5 bg-amber-500/10 border-b border-amber-500/15 text-center flex items-center justify-center gap-2 flex-shrink-0 z-20">
+    <span className="text-amber-400 text-[11px] font-bold tracking-wide uppercase">
+      ⚠ Simulator Mode — Add your Sarvam API key in Settings for real AI
+    </span>
+  </div>
+);
 
-  // Preferences States (backed by LocalStorage where helpful)
-  const [currentLang, setCurrentLang] = useState('hi-IN');
-  const [personality, setPersonality] = useState('respectful');
-  const [voiceSpeed, setVoiceSpeed] = useState(1.0);
-  const [apiKey, setApiKey] = useState(() => {
-    return localStorage.getItem('sarvam_user_key') || '';
-  });
+const AppInner = () => {
+  const { user, loading, logout } = useAuth();
+  const chatHistory = useChatHistory();
 
-  // Conversation Memory Thread
-  const [messages, setMessages] = useState([]);
+  const [activeTab, setActiveTab]         = useState('home');
+  const [currentLang, setCurrentLang]     = useState('hi-IN');
+  const [personality, setPersonality]     = useState('respectful');
+  const [voiceSpeed, setVoiceSpeed]       = useState(1.0);
+  const [apiKey, setApiKey]               = useState(() => localStorage.getItem('sarvam_user_key') || '');
+  const [messages, setMessages]           = useState([]);
+  const [isSimulatorMode, setIsSimulatorMode] = useState(false);
 
-  // Connect to Centralized Voice recording hooks
   const voiceRecorder = useVoiceRecorder(currentLang);
 
-  // Submit prompts to Express backend
+  // Helper getters from localStorage
+  const getProfile     = () => { try { return JSON.parse(localStorage.getItem('vani_profile') || 'null'); } catch { return null; } };
+  const getSaveHistory = () => localStorage.getItem('vani_save_history') !== 'false';
+  const getAutoSpeak   = () => localStorage.getItem('vani_autospeak') !== 'false';
+  const getSpeaker     = () => localStorage.getItem('vani_speaker') || 'anushka';
+
+  // Restore chat session from sidebar
+  const handleLoadSession = useCallback((sessionMessages, sessionLang, newSessionId) => {
+    setMessages(sessionMessages || []);
+    if (sessionLang) setCurrentLang(sessionLang);
+    setActiveTab('chat');
+    if (newSessionId && chatHistory.isLoggedIn) chatHistory.setCurrentSessionId(newSessionId);
+  }, [chatHistory]);
+
+  // Auto-save messages to history
+  useEffect(() => {
+    if (!chatHistory.isLoggedIn || messages.length === 0) return;
+    if (!getSaveHistory()) return;
+    if (!chatHistory.currentSessionId) {
+      const id = chatHistory.startNewSession(currentLang);
+      if (id) chatHistory.saveSession(id, messages, currentLang);
+    } else {
+      chatHistory.saveSession(chatHistory.currentSessionId, messages, currentLang);
+    }
+  }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cancel speech on tab change
+  useEffect(() => {
+    voiceRecorder.cancelSpeech?.();
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── Global keyboard shortcuts ────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e) => {
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (voiceRecorder.isRecording) voiceRecorder.stopRecording();
+        else voiceRecorder.startRecording();
+      }
+      if (e.code === 'Escape') voiceRecorder.cancelSpeech?.();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [voiceRecorder]);
+
   const onSubmitPrompt = async (promptText) => {
     try {
-      const headers = {
-        'Content-Type': 'application/json',
-      };
-      
-      // If a custom key is saved in client preferences, send it down in headers
-      if (apiKey) {
-        headers['api-subscription-key'] = apiKey;
-      }
-
-      // Convert conversation messages format to standard OpenAI structure
-      const formattedHistory = messages.map(m => ({
-        role: m.role,
-        content: m.content
-      }));
-
+      const formattedHistory = messages.map(m => ({ role: m.role, content: m.content }));
       const payload = {
         prompt: promptText,
-        messages: [
-          ...formattedHistory,
-          { role: 'user', content: promptText }
-        ],
+        messages: [...formattedHistory, { role: 'user', content: promptText }],
         language_code: currentLang,
-        personality: personality,
-        history: formattedHistory
+        personality,
+        history: formattedHistory,
+        profile: getProfile(),
+        speaker: getSpeaker()
       };
-
-      // Call our Node.js express backend chat route
-      const response = await axios.post('/api/ai/chat', payload, { headers });
+      const response = await axios.post('/api/ai/chat', payload, {
+        headers: { 'Content-Type': 'application/json' },
+        withCredentials: true
+      });
+      setIsSimulatorMode(!!response.data.simulated);
       return response.data;
-
     } catch (error) {
       console.error('API submission failed:', error);
-      
-      // Secondary client-side fallback chatbot if backend is entirely offline
-      await new Promise(resolve => setTimeout(resolve, 800));
+      await new Promise(r => setTimeout(r, 800));
+      setIsSimulatorMode(true);
       return {
-        response: `[Vani Assistant Offline Fallback]: I received your prompt: "${promptText}". Please ensure the backend Node server is running on port 5000.`,
+        response: `[Vani Assistant Offline]: I received: "${promptText}". Ensure the backend server is running on port 5000.`,
         simulated: true
       };
     }
   };
 
-  // Clean ongoing syntheses when switching tabs to prevent voice overlaps
-  useEffect(() => {
-    if (voiceRecorder.cancelSpeech) {
-      voiceRecorder.cancelSpeech();
-    }
-  }, [activeTab]);
+  // ─── Loading screen ────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-[#04020A]">
+        <div className="cyber-bg" />
+        <div className="flex flex-col items-center gap-4 z-10">
+          <Sparkles size={32} className="text-cyber-cyan animate-spin" />
+          <p className="text-white/40 text-sm font-semibold">Loading Vani AI...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Auth guard: show login if no session user ────────────────────────────
+  if (!user) {
+    return <Login onLoginSuccess={(u) => window.location.reload()} />;
+  }
 
   return (
     <div className="flex flex-col md:flex-row h-screen w-screen bg-cyber-bg overflow-hidden text-cyber-text select-none font-sans relative">
-      
-      {/* Premium Sci-Fi Background Particle Glows */}
       <div className="cyber-bg" />
 
-      {/* Futuristic collapsible Sidebar navigation */}
-      <Sidebar 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        currentLang={currentLang} 
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        currentLang={currentLang}
+        setCurrentLang={setCurrentLang}
+        onNewChat={handleLoadSession}
+        user={user}
+        logout={logout}
       />
 
-      {/* Main Core View Area */}
-      <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative z-10">
-        
-        {/* Dynamic page tab mounting */}
+      {/* Main content — pb-16 on mobile for bottom nav bar */}
+      <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative z-10 pb-16 md:pb-0">
+        {isSimulatorMode && <SimulatorBanner />}
+
         {activeTab === 'home' && (
-          <Home 
+          <Home
             currentLang={currentLang}
             personality={personality}
             voiceSpeed={voiceSpeed}
@@ -103,22 +154,22 @@ const App = () => {
             messages={messages}
             setMessages={setMessages}
             onSubmitPrompt={onSubmitPrompt}
+            isSimulatorMode={isSimulatorMode}
           />
         )}
-
         {activeTab === 'chat' && (
-          <Chat 
+          <Chat
             currentLang={currentLang}
             voiceSpeed={voiceSpeed}
             voiceRecorder={voiceRecorder}
             messages={messages}
             setMessages={setMessages}
             onSubmitPrompt={onSubmitPrompt}
+            autoSpeak={getAutoSpeak()}
           />
         )}
-
         {activeTab === 'assistant' && (
-          <Assistant 
+          <Assistant
             currentLang={currentLang}
             voiceSpeed={voiceSpeed}
             voiceRecorder={voiceRecorder}
@@ -126,9 +177,8 @@ const App = () => {
             onEndSession={() => setActiveTab('home')}
           />
         )}
-
         {activeTab === 'settings' && (
-          <Settings 
+          <Settings
             currentLang={currentLang}
             setCurrentLang={setCurrentLang}
             personality={personality}
@@ -140,9 +190,14 @@ const App = () => {
           />
         )}
       </main>
-
     </div>
   );
 };
+
+const App = () => (
+  <ChatHistoryProvider>
+    <AppInner />
+  </ChatHistoryProvider>
+);
 
 export default App;
