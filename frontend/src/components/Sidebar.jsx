@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Home, MessageSquare, Mic, Settings, Menu, X, Globe, Radio,
   LogOut, User, Plus, Trash2, ChevronDown, ChevronRight, Clock, CheckCircle2
@@ -39,14 +39,14 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
 
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (pendingDeleteId) {
       const timer = setTimeout(() => setPendingDeleteId(null), 3000);
       return () => clearTimeout(timer);
     }
   }, [pendingDeleteId]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handleOutsideClick = () => setPendingDeleteId(null);
     document.addEventListener('click', handleOutsideClick);
     return () => document.removeEventListener('click', handleOutsideClick);

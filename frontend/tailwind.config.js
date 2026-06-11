@@ -9,14 +9,14 @@ export default {
     extend: {
       colors: {
         cyber: {
-          bg: '#07050F',
+          bg: 'var(--cyber-bg-color, #07050F)',
           card: 'rgba(15, 12, 30, 0.45)',
           border: 'rgba(255, 255, 255, 0.08)',
           purple: '#8A2BE2',
           cyan: '#00FFFF',
           neonPurple: '#BD00FF',
           neonCyan: '#00F0FF',
-          text: '#F8F7FF'
+          text: 'var(--cyber-text, #F8F7FF)'
         }
       },
       fontFamily: {
@@ -32,6 +32,7 @@ export default {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'orb-glow': 'orbGlow 4s ease-in-out infinite alternate',
         'float': 'float 6s ease-in-out infinite',
+        'float-slow': 'floatSlow 0.4s ease-out both',
         'equalizer': 'equalizer 1.2s ease-in-out infinite',
       },
       keyframes: {
@@ -43,6 +44,10 @@ export default {
         float: {
           '0%, 100%': { transform: 'translateY(0)' },
           '50%': { transform: 'translateY(-10px)' },
+        },
+        floatSlow: {
+          '0%': { opacity: '0', transform: 'translateY(6px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
         },
         equalizer: {
           '0%, 100%': { height: '10%' },

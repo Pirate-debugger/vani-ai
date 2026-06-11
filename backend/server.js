@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { existsSync } from 'fs';
 import session from 'express-session';
 import passport from 'passport';
 import helmet from 'helmet';
@@ -100,15 +101,17 @@ app.use('/api/auth', authRoutes);
 app.use('/api/voice', voiceRoutes);
 app.use('/api/ai', aiRoutes);
 
-// Serve frontend build
-app.use(express.static(path.join(__dirname, 'public')));
-app.get('*', (req, res, next) => {
-  if (!req.path.startsWith('/api')) {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-  } else {
-    next();
-  }
-});
+// Serve frontend build (production only — in dev, Vite runs separately)
+const publicDir = path.join(__dirname, 'public');
+const indexHtml = path.join(publicDir, 'index.html');
+
+if (existsSync(indexHtml)) {
+  app.use(express.static(publicDir));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(indexHtml);
+  });
+}
 
 // Error Handler
 app.use((err, req, res, next) => {

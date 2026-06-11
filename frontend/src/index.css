@@ -113,36 +113,7 @@
   100% { transform: translate(-10%, -15%) scale(0.95); }
 }
 
-/* Cyber glowing button */
-.btn-glow {
-  background: linear-gradient(135deg, #BD00FF 0%, #00F0FF 100%);
-  transition: all 0.3s ease;
-  position: relative;
-}
-
-.btn-glow::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, #BD00FF 0%, #00F0FF 100%);
-  border-radius: inherit;
-  filter: blur(10px);
-  opacity: 0.6;
-  z-index: -1;
-  transition: all 0.3s ease;
-}
-
-.btn-glow:hover {
-  transform: scale(1.02);
-}
-
-.btn-glow:hover::before {
-  filter: blur(15px);
-  opacity: 0.95;
-}
+/* Cyber glowing button — defined once at bottom of file */
 
 /* Custom Scrollbar for premium feel */
 ::-webkit-scrollbar {

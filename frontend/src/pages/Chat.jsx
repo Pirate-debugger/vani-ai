@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Send, Mic, MicOff, Volume2, Sparkles, User, Trash2, Plus, Copy } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useChatHistory } from '../context/ChatHistoryContext';
@@ -43,6 +43,14 @@ const Chat = ({
     if (status === 400 && msg?.toLowerCase().includes('audio')) return "No audio detected. Try speaking louder or closer to the mic.";
     return "Something went wrong. The backend may be offline.";
   };
+
+  // Cache the last assistant message id to avoid O(n) reverse+find in every render
+  const lastAssistantMsgId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') return messages[i].id;
+    }
+    return null;
+  }, [messages]);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -164,7 +172,7 @@ const Chat = ({
   const micIsActive = isRecording || isSttLoading;
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#07050F] relative overflow-hidden">
+    <div className="flex-1 flex flex-col h-full bg-cyber-bg relative overflow-hidden">
       
       {/* Header Panel */}
       <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-white/5 flex items-center justify-between glass-panel z-10 flex-shrink-0">
@@ -228,8 +236,8 @@ const Chat = ({
                         : 'bg-cyber-purple/10 border-cyber-purple/20 text-cyber-neonPurple'}
                     `}>
                       {isUser ? <User size={12} /> : 'V'}
-                      {(!isUser && isSpeaking && msg.id === [...messages].reverse().find(m => m.role === 'assistant')?.id) && (
-                        <div className="absolute -bottom-1 -right-1 bg-[#07050F] rounded-full p-[2px] flex items-center gap-[2px]">
+                      {(!isUser && isSpeaking && msg.id === lastAssistantMsgId) && (
+                        <div className="absolute -bottom-1 -right-1 bg-cyber-bg rounded-full p-[2px] flex items-center gap-[2px]">
                           <div className="w-1 h-[6px] bg-cyber-cyan animate-waveform" style={{ animationDelay: '0ms' }} />
                           <div className="w-1 h-[10px] bg-cyber-cyan animate-waveform" style={{ animationDelay: '150ms' }} />
                           <div className="w-1 h-[6px] bg-cyber-cyan animate-waveform" style={{ animationDelay: '300ms' }} />

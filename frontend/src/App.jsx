@@ -80,9 +80,11 @@ const AppInner = () => {
       try {
         await axios.get('/api/health', { timeout: 3000 });
         setBackendOffline(false);
-        setDismissOffline(false);
+        // Don't reset dismissOffline here — user may have dismissed it intentionally
       } catch {
+        // Only show banner again if the user hadn't dismissed it yet
         setBackendOffline(true);
+        setDismissOffline(false); // Reset dismiss so the new outage shows up
       }
     };
     checkHealth();
@@ -177,6 +179,9 @@ const AppInner = () => {
     <div className="flex flex-col md:flex-row h-screen w-screen bg-cyber-bg overflow-hidden text-cyber-text select-none font-sans relative">
       <div className="cyber-bg" />
 
+      {/* Mic permission modal — outside overflow-hidden so it overlays correctly */}
+      {!micPrompted && <MicPermissionModal onAllow={handleMicAllow} onDismiss={handleMicDismiss} />}
+
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -189,7 +194,6 @@ const AppInner = () => {
 
       {/* Main content — pb-16 on mobile for bottom nav bar */}
       <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative z-10 pb-16 md:pb-0">
-        {(!micPrompted) && <MicPermissionModal onAllow={handleMicAllow} onDismiss={handleMicDismiss} />}
         {backendOffline && !dismissOffline && <OfflineBanner onDismiss={() => setDismissOffline(true)} />}
         {isSimulatorMode && <SimulatorBanner />}
 

@@ -36,6 +36,7 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
   const streamRef        = useRef(null);
   const transcriptRef    = useRef('');
   const currentAudioRef  = useRef(null); // Track currently playing audio element
+  const audioContextRef  = useRef(null); // Ref to avoid stale closure in stopRecording
 
   // TTS sentence queue for streaming responses
   const ttsQueueRef   = useRef([]);
@@ -130,6 +131,7 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
       const ana = ctx.createAnalyser();
       ana.fftSize = 256;
       src.connect(ana);
+      audioContextRef.current = ctx;
       setAudioContext(ctx);
       setAnalyser(ana);
 
@@ -186,8 +188,11 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
     }
-    if (audioContext && audioContext.state !== 'closed') {
-      audioContext.close();
+    // Use ref instead of state to avoid stale closure
+    const ctx = audioContextRef.current;
+    if (ctx && ctx.state !== 'closed') {
+      ctx.close();
+      audioContextRef.current = null;
       setAudioContext(null);
       setAnalyser(null);
     }
