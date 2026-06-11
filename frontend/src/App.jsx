@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { useAuth } from './hooks/useAuth';
+import { useAuth, AuthProvider } from './context/AuthContext';
 import { ChatHistoryProvider, useChatHistory } from './context/ChatHistoryContext';
 import Sidebar from './components/Sidebar';
 import Home from './pages/Home';
@@ -8,8 +8,9 @@ import Chat from './pages/Chat';
 import Assistant from './pages/Assistant';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
+import MicPermissionModal from './components/MicPermissionModal';
 import { useVoiceRecorder } from './hooks/useVoiceRecorder';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, X } from 'lucide-react';
 
 // Simulator Mode Banner
 const SimulatorBanner = () => (
@@ -20,17 +21,31 @@ const SimulatorBanner = () => (
   </div>
 );
 
+const OfflineBanner = ({ onDismiss }) => (
+  <div className="w-full px-4 py-1.5 bg-amber-500/10 border-b border-amber-500/15 text-center flex items-center justify-between gap-2 flex-shrink-0 z-20">
+    <span className="text-amber-400 text-[11px] font-bold tracking-wide uppercase flex-1">
+      ⚠ Backend offline — running in demo mode
+    </span>
+    <button onClick={onDismiss} className="text-amber-400/60 hover:text-amber-400">
+      <X size={14} />
+    </button>
+  </div>
+);
+
 const AppInner = () => {
-  const { user, loading, logout } = useAuth();
+  const { user, setUser, authLoading: loading, logout } = useAuth();
   const chatHistory = useChatHistory();
 
   const [activeTab, setActiveTab]         = useState('home');
   const [currentLang, setCurrentLang]     = useState('hi-IN');
   const [personality, setPersonality]     = useState('respectful');
   const [voiceSpeed, setVoiceSpeed]       = useState(1.0);
-  const [apiKey, setApiKey]               = useState(() => localStorage.getItem('sarvam_user_key') || '');
+  const [apiKey, setApiKey]               = useState('');
   const [messages, setMessages]           = useState([]);
   const [isSimulatorMode, setIsSimulatorMode] = useState(false);
+  const [micPrompted, setMicPrompted]     = useState(() => localStorage.getItem('vani_mic_prompted') === 'true');
+  const [backendOffline, setBackendOffline] = useState(false);
+  const [dismissOffline, setDismissOffline] = useState(false);
 
   const voiceRecorder = useVoiceRecorder(currentLang);
 
@@ -59,6 +74,37 @@ const AppInner = () => {
       chatHistory.saveSession(chatHistory.currentSessionId, messages, currentLang);
     }
   }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        await axios.get('/api/health', { timeout: 3000 });
+        setBackendOffline(false);
+        setDismissOffline(false);
+      } catch {
+        setBackendOffline(true);
+      }
+    };
+    checkHealth();
+    const interval = setInterval(checkHealth, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleMicAllow = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      console.warn('Mic access denied:', err);
+    } finally {
+      localStorage.setItem('vani_mic_prompted', 'true');
+      setMicPrompted(true);
+    }
+  };
+
+  const handleMicDismiss = () => {
+    localStorage.setItem('vani_mic_prompted', 'true');
+    setMicPrompted(true);
+  };
 
   // Cancel speech on tab change
   useEffect(() => {
@@ -124,7 +170,7 @@ const AppInner = () => {
 
   // ─── Auth guard: show login if no session user ────────────────────────────
   if (!user) {
-    return <Login onLoginSuccess={(u) => window.location.reload()} />;
+    return <Login onLoginSuccess={(u) => setUser(u)} />;
   }
 
   return (
@@ -143,6 +189,8 @@ const AppInner = () => {
 
       {/* Main content — pb-16 on mobile for bottom nav bar */}
       <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative z-10 pb-16 md:pb-0">
+        {(!micPrompted) && <MicPermissionModal onAllow={handleMicAllow} onDismiss={handleMicDismiss} />}
+        {backendOffline && !dismissOffline && <OfflineBanner onDismiss={() => setDismissOffline(true)} />}
         {isSimulatorMode && <SimulatorBanner />}
 
         {activeTab === 'home' && (
@@ -195,9 +243,11 @@ const AppInner = () => {
 };
 
 const App = () => (
-  <ChatHistoryProvider>
-    <AppInner />
-  </ChatHistoryProvider>
+  <AuthProvider>
+    <ChatHistoryProvider>
+      <AppInner />
+    </ChatHistoryProvider>
+  </AuthProvider>
 );
 
 export default App;

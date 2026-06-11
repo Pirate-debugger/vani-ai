@@ -2,93 +2,112 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 
 const AuthContext = createContext(null);
 
-// SHA-256 hash via browser Web Crypto API
-async function hashPassword(password) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password + 'vani_ai_salt_v1');
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-const USERS_KEY = 'vani_users';
-const CURRENT_USER_KEY = 'vani_current_user';
+const API_BASE = '/api';
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);         // null = not logged in (guest)
-  const [isGuest, setIsGuest] = useState(false);  // true = explicitly chose guest
+  const [user, setUser] = useState(null);          // null = not logged in
+  const [isGuest, setIsGuest] = useState(false);   // true = guest session
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Load persisted session on mount
+  // ─── Hydrate session on mount via GET /api/auth/me ────────────────────────
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(CURRENT_USER_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setUser(parsed);
-        setIsGuest(parsed.isGuest || false);
+    const hydrate = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          setUser(data.user);
+          setIsGuest(data.user?.isGuest ?? false);
+        } else {
+          setUser(null);
+          setIsGuest(false);
+        }
+      } catch {
+        setUser(null);
+        setIsGuest(false);
+      } finally {
+        setAuthLoading(false);
       }
-    } catch (e) {
-      localStorage.removeItem(CURRENT_USER_KEY);
-    } finally {
-      setAuthLoading(false);
-    }
+    };
+    hydrate();
   }, []);
 
-  const getUsers = () => {
-    try {
-      return JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
-    } catch {
-      return [];
-    }
-  };
-
+  // ─── Register ──────────────────────────────────────────────────────────────
   const register = useCallback(async ({ name, email, password }) => {
-    const users = getUsers();
-    if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
-      throw new Error('An account with this email already exists.');
-    }
-    const hashed = await hashPassword(password);
-    const newUser = { name, email: email.toLowerCase(), password: hashed };
-    users.push(newUser);
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    const res = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ name, email, password }),
+    });
 
-    const sessionUser = { name, email: email.toLowerCase(), isGuest: false };
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(sessionUser));
-    setUser(sessionUser);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Registration failed.');
+
+    setUser(data.user);
     setIsGuest(false);
-    return sessionUser;
+    return data.user;
   }, []);
 
+  // ─── Login ─────────────────────────────────────────────────────────────────
   const login = useCallback(async ({ email, password }) => {
-    const users = getUsers();
-    const found = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (!found) throw new Error('No account found with that email address.');
-    const hashed = await hashPassword(password);
-    if (hashed !== found.password) throw new Error('Incorrect password. Please try again.');
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ email, password }),
+    });
 
-    const sessionUser = { name: found.name, email: found.email, isGuest: false };
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(sessionUser));
-    setUser(sessionUser);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Login failed.');
+
+    setUser(data.user);
     setIsGuest(false);
-    return sessionUser;
+    return data.user;
   }, []);
 
-  const continueAsGuest = useCallback(() => {
-    const guestUser = { name: 'Guest', email: null, isGuest: true };
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(guestUser));
+  // ─── Guest ─────────────────────────────────────────────────────────────────
+  const continueAsGuest = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/local-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ isGuest: true }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUser(data.user);
+        setIsGuest(true);
+        return data.user;
+      }
+    } catch (err) {
+      console.error('Guest login failed:', err);
+    }
+    // Fallback: set a client-side guest if backend unreachable
+    const guestUser = { name: 'Guest', email: null, isGuest: true, provider: 'guest' };
     setUser(guestUser);
     setIsGuest(true);
+    return guestUser;
   }, []);
 
-  const logout = useCallback(() => {
-    localStorage.removeItem(CURRENT_USER_KEY);
-    setUser(null);
-    setIsGuest(false);
+  // ─── Logout ────────────────────────────────────────────────────────────────
+  const logout = useCallback(async () => {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      setUser(null);
+      setIsGuest(false);
+    }
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isGuest, authLoading, register, login, continueAsGuest, logout }}>
+    <AuthContext.Provider value={{ user, setUser, isGuest, authLoading, register, login, continueAsGuest, logout }}>
       {children}
     </AuthContext.Provider>
   );

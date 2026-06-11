@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import session from 'express-session';
 import passport from 'passport';
+import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import voiceRoutes from './routes/voice.js';
 import aiRoutes from './routes/ai.js';
@@ -12,10 +13,34 @@ import authRoutes from './routes/auth.js';
 
 dotenv.config();
 
+// ─── Security guard ────────────────────────────────────────────────────────
+if (
+  !process.env.SESSION_SECRET ||
+  process.env.SESSION_SECRET === 'vani-dev-secret-change-in-prod'
+) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('SESSION_SECRET must be set in production');
+  }
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      connectSrc: ["'self'", "https://api.sarvam.ai", "https://api.openai.com", "https://generativelanguage.googleapis.com"],
+      mediaSrc: ["'self'", "blob:"],
+      workerSrc: ["'self'", "blob:"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+    }
+  }
+}));
+
 const PORT = process.env.PORT || 5000;
 
 // Rate Limiting — 60 requests per minute per IP
@@ -30,7 +55,9 @@ app.use('/api/', limiter);
 const allowedOrigins = (process.env.ALLOWED_ORIGIN || 'http://localhost:3000,http://localhost:5173').split(',');
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.some(o => origin.startsWith(o.trim()))) {
+    const normalizeOrigin = (o) => { try { return new URL(o.trim()).origin; } catch { return o.trim(); } };
+    const normalizedAllowed = allowedOrigins.map(normalizeOrigin);
+    if (!origin || normalizedAllowed.includes(normalizeOrigin(origin))) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -65,20 +92,23 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'online',
-    timestamp: new Date().toISOString(),
-    user: req.user || null,
-    apiKeysConfigured: {
-      sarvam: !!(req.session?.sarvamKey || process.env.SARVAM_API_KEY),
-      openai: !!process.env.OPENAI_API_KEY,
-      gemini: !!process.env.GEMINI_API_KEY,
-      google: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
-    }
+    timestamp: new Date().toISOString()
   });
 });
 
 app.use('/api/auth', authRoutes);
 app.use('/api/voice', voiceRoutes);
 app.use('/api/ai', aiRoutes);
+
+// Serve frontend build
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('*', (req, res, next) => {
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  } else {
+    next();
+  }
+});
 
 // Error Handler
 app.use((err, req, res, next) => {
@@ -89,11 +119,15 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`=========================================`);
-  console.log(` Vani AI Express Backend Running on:      `);
-  console.log(` http://localhost:${PORT}                 `);
-  console.log(` Mode: ${process.env.SARVAM_API_KEY ? 'Production (Sarvam API)' : 'Simulator Mode'}`);
-  console.log(` Google OAuth: ${process.env.GOOGLE_CLIENT_ID ? 'Configured ✓' : 'Not configured (local auth only)'}`);
-  console.log(`=========================================`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`=========================================`);
+    console.log(` Vani AI Express Backend Running on:      `);
+    console.log(` http://localhost:${PORT}                 `);
+    console.log(` Mode: ${process.env.SARVAM_API_KEY ? 'Production (Sarvam API)' : 'Simulator Mode'}`);
+    console.log(` Google OAuth: ${process.env.GOOGLE_CLIENT_ID ? 'Configured ✓' : 'Not configured (local auth only)'}`);
+    console.log(`=========================================`);
+  });
+}
+
+export default app;

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Home, MessageSquare, Mic, Settings, Menu, X, Globe, Radio,
-  LogOut, User, Plus, Trash2, ChevronDown, ChevronRight, Clock
+  LogOut, User, Plus, Trash2, ChevronDown, ChevronRight, Clock, CheckCircle2
 } from 'lucide-react';
 import { useChatHistory } from '../context/ChatHistoryContext';
 
@@ -36,6 +36,31 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
 
   const isGuest = user?.isGuest || false;
   const { sessions, currentSessionId, loadSession, deleteSession, startNewSession, isLoggedIn } = useChatHistory();
+
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
+
+  React.useEffect(() => {
+    if (pendingDeleteId) {
+      const timer = setTimeout(() => setPendingDeleteId(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [pendingDeleteId]);
+
+  React.useEffect(() => {
+    const handleOutsideClick = () => setPendingDeleteId(null);
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, []);
+
+  const handleDeleteClick = (e, id) => {
+    e.stopPropagation();
+    if (pendingDeleteId === id) {
+      deleteSession(id);
+      setPendingDeleteId(null);
+    } else {
+      setPendingDeleteId(id);
+    }
+  };
 
   const menuItems = [
     { id: 'home',      label: 'Home',           icon: Home },
@@ -208,11 +233,15 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
                           <p className="text-[9px] text-white/25 font-medium">{relativeTime(session.createdAt)}</p>
                         </div>
                         <button
-                          onClick={(e) => { e.stopPropagation(); deleteSession(session.id); }}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-white/20 hover:text-red-400 transition-all flex-shrink-0"
-                          title="Delete session"
+                          onClick={(e) => handleDeleteClick(e, session.id)}
+                          className={`p-1 transition-all flex-shrink-0 ${
+                            pendingDeleteId === session.id
+                              ? 'opacity-100 text-red-400 bg-red-500/10 rounded'
+                              : 'opacity-0 group-hover:opacity-100 text-white/20 hover:text-red-400'
+                          }`}
+                          title={pendingDeleteId === session.id ? "Confirm delete" : "Delete session"}
                         >
-                          <Trash2 size={11} />
+                          {pendingDeleteId === session.id ? <CheckCircle2 size={12} className="text-red-400" /> : <Trash2 size={11} />}
                         </button>
                       </div>
                     ))

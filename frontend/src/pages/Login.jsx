@@ -1,57 +1,69 @@
 import React, { useState } from 'react';
-import { Sparkles, Mail, User, ArrowRight, Loader } from 'lucide-react';
+import { Sparkles, Mail, Lock, User, ArrowRight, Loader, Eye, EyeOff } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
-// Points to backend directly for OAuth redirect (must not go through Vite proxy)
+// Backend URL for OAuth redirect (must bypass Vite proxy)
 const BACKEND_URL = 'http://localhost:5000';
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 const Login = ({ onLoginSuccess }) => {
-  const [mode, setMode]       = useState('landing'); // landing | email
-  const [name, setName]       = useState('');
-  const [email, setEmail]     = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState('');
+  const { register, login, continueAsGuest } = useAuth();
+
+  const [mode, setMode]               = useState('landing'); // landing | signin | register
+  const [name, setName]               = useState('');
+  const [email, setEmail]             = useState('');
+  const [password, setPassword]       = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState('');
 
   const languages = ['हिन्दी', 'தமிழ்', 'मराठी', 'বাংলা', 'English', 'తెలుగు'];
 
-  const handleLocalLogin = async (e) => {
+  const resetForm = () => {
+    setName(''); setEmail(''); setPassword(''); setError(''); setShowPassword(false);
+  };
+
+  const switchMode = (m) => { resetForm(); setMode(m); };
+
+  // ─── Sign In ──────────────────────────────────────────────────────────────
+  const handleSignIn = async (e) => {
     e.preventDefault();
-    if (!email.trim()) { setError('Email is required'); return; }
+    if (!email.trim() || !password) { setError('Email and password are required.'); return; }
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/auth/local-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ email: email.trim(), name: name.trim() || email.split('@')[0] })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (onLoginSuccess) onLoginSuccess(data.user);
-      } else {
-        setError('Login failed. Please try again.');
-      }
-    } catch {
-      setError('Connection error. Is the backend running?');
+      const user = await login({ email: email.trim(), password });
+      if (onLoginSuccess) onLoginSuccess(user);
+    } catch (err) {
+      setError(err.message || 'Login failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  // ─── Register ─────────────────────────────────────────────────────────────
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    if (!name.trim() || !email.trim() || !password) { setError('All fields are required.'); return; }
+    if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      const user = await register({ name: name.trim(), email: email.trim(), password });
+      if (onLoginSuccess) onLoginSuccess(user);
+    } catch (err) {
+      setError(err.message || 'Registration failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ─── Guest ────────────────────────────────────────────────────────────────
   const handleGuest = async () => {
     setLoading(true);
+    setError('');
     try {
-      const res = await fetch(`${API_BASE}/auth/local-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ isGuest: true })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (onLoginSuccess) onLoginSuccess(data.user);
-      }
+      const user = await continueAsGuest();
+      if (onLoginSuccess) onLoginSuccess(user);
     } catch {
       setError('Could not start guest session.');
     } finally {
@@ -59,11 +71,15 @@ const Login = ({ onLoginSuccess }) => {
     }
   };
 
+  // ─── Shared input renderer ────────────────────────────────────────────────
+  const inputClass =
+    'w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-cyber-cyan/30 transition-all';
+
   return (
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#04020A] relative overflow-hidden select-none">
       <div className="cyber-bg" />
 
-      {/* Animated language rings — hidden on tiny screens to avoid overflow */}
+      {/* Animated rings */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none hidden sm:flex">
         <div className="absolute w-[min(600px,90vw)] h-[min(600px,90vw)] rounded-full border border-cyber-purple/8 animate-spin" style={{ animationDuration: '30s' }} />
         <div className="absolute w-[min(450px,70vw)] h-[min(450px,70vw)] rounded-full border border-cyber-cyan/6 animate-spin" style={{ animationDuration: '20s', animationDirection: 'reverse' }} />
@@ -97,7 +113,8 @@ const Login = ({ onLoginSuccess }) => {
         {/* Auth card */}
         <div className="w-full glass-panel rounded-2xl p-6 border border-white/8 space-y-3">
 
-          {mode === 'landing' ? (
+          {/* ── Landing ── */}
+          {mode === 'landing' && (
             <>
               {/* Google Sign-in */}
               <a
@@ -119,16 +136,22 @@ const Login = ({ onLoginSuccess }) => {
                 <div className="flex-1 h-px bg-white/8" />
               </div>
 
-              {/* Email login */}
               <button
-                onClick={() => setMode('email')}
+                onClick={() => switchMode('signin')}
                 className="flex items-center justify-center gap-2.5 w-full bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyber-cyan/25 text-white/70 hover:text-white font-semibold py-3.5 rounded-xl transition-all"
               >
                 <Mail size={16} />
-                Continue with Email
+                Sign in with Email
               </button>
 
-              {/* Guest mode */}
+              <button
+                onClick={() => switchMode('register')}
+                className="flex items-center justify-center gap-2.5 w-full bg-cyber-cyan/8 hover:bg-cyber-cyan/15 border border-cyber-cyan/20 hover:border-cyber-cyan/40 text-cyber-cyan/80 hover:text-cyber-cyan font-semibold py-3.5 rounded-xl transition-all"
+              >
+                <User size={16} />
+                Create Account
+              </button>
+
               <button
                 onClick={handleGuest}
                 disabled={loading}
@@ -138,19 +161,75 @@ const Login = ({ onLoginSuccess }) => {
                 Continue as Guest (no history saved)
               </button>
             </>
-          ) : (
-            <form onSubmit={handleLocalLogin} className="space-y-3">
-              <button type="button" onClick={() => setMode('landing')} className="text-white/35 hover:text-white text-xs font-medium flex items-center gap-1 mb-1 transition-colors">
-                ← Back
-              </button>
+          )}
+
+          {/* ── Sign In ── */}
+          {mode === 'signin' && (
+            <form onSubmit={handleSignIn} className="space-y-3">
+              <div className="flex items-center justify-between mb-1">
+                <button type="button" onClick={() => switchMode('landing')} className="text-white/35 hover:text-white text-xs font-medium flex items-center gap-1 transition-colors">
+                  ← Back
+                </button>
+                <span className="text-white/50 text-xs">Sign In</span>
+              </div>
 
               <div>
-                <label className="block text-xs text-white/40 font-bold uppercase tracking-wider mb-1.5">Name (optional)</label>
+                <label className="block text-xs text-white/40 font-bold uppercase tracking-wider mb-1.5">Email</label>
+                <div className="relative">
+                  <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25" />
+                  <input id="signin-email" type="email" value={email} onChange={e => setEmail(e.target.value)}
+                    placeholder="you@example.com" required autoComplete="email"
+                    className={inputClass} />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-white/40 font-bold uppercase tracking-wider mb-1.5">Password</label>
+                <div className="relative">
+                  <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25" />
+                  <input id="signin-password" type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
+                    placeholder="••••••••" required autoComplete="current-password"
+                    className={`${inputClass} pr-10`} />
+                  <button type="button" onClick={() => setShowPassword(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors">
+                    {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </div>
+
+              {error && <p className="text-red-400 text-xs font-medium">{error}</p>}
+
+              <button type="submit" disabled={loading || !email.trim() || !password}
+                className="w-full btn-glow text-white py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40 transition-all">
+                {loading ? <Loader size={16} className="animate-spin" /> : <><span>Sign In</span><ArrowRight size={16} /></>}
+              </button>
+
+              <p className="text-center text-xs text-white/30 pt-1">
+                No account?{' '}
+                <button type="button" onClick={() => switchMode('register')} className="text-cyber-cyan/70 hover:text-cyber-cyan transition-colors font-medium">
+                  Create one
+                </button>
+              </p>
+            </form>
+          )}
+
+          {/* ── Register ── */}
+          {mode === 'register' && (
+            <form onSubmit={handleRegister} className="space-y-3">
+              <div className="flex items-center justify-between mb-1">
+                <button type="button" onClick={() => switchMode('landing')} className="text-white/35 hover:text-white text-xs font-medium flex items-center gap-1 transition-colors">
+                  ← Back
+                </button>
+                <span className="text-white/50 text-xs">Create Account</span>
+              </div>
+
+              <div>
+                <label className="block text-xs text-white/40 font-bold uppercase tracking-wider mb-1.5">Full Name</label>
                 <div className="relative">
                   <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25" />
-                  <input type="text" value={name} onChange={e => setName(e.target.value)}
-                    placeholder="Your name..."
-                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-cyber-cyan/30 transition-all" />
+                  <input id="register-name" type="text" value={name} onChange={e => setName(e.target.value)}
+                    placeholder="Your name" required autoComplete="name"
+                    className={inputClass} />
                 </div>
               </div>
 
@@ -158,18 +237,39 @@ const Login = ({ onLoginSuccess }) => {
                 <label className="block text-xs text-white/40 font-bold uppercase tracking-wider mb-1.5">Email</label>
                 <div className="relative">
                   <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25" />
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                    placeholder="you@example.com" required
-                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-cyber-cyan/30 transition-all" />
+                  <input id="register-email" type="email" value={email} onChange={e => setEmail(e.target.value)}
+                    placeholder="you@example.com" required autoComplete="email"
+                    className={inputClass} />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-white/40 font-bold uppercase tracking-wider mb-1.5">Password</label>
+                <div className="relative">
+                  <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25" />
+                  <input id="register-password" type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
+                    placeholder="Min. 6 characters" required autoComplete="new-password"
+                    className={`${inputClass} pr-10`} />
+                  <button type="button" onClick={() => setShowPassword(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors">
+                    {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
                 </div>
               </div>
 
               {error && <p className="text-red-400 text-xs font-medium">{error}</p>}
 
-              <button type="submit" disabled={loading || !email.trim()}
+              <button type="submit" disabled={loading || !name.trim() || !email.trim() || !password}
                 className="w-full btn-glow text-white py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40 transition-all">
-                {loading ? <Loader size={16} className="animate-spin" /> : <><span>Sign In</span><ArrowRight size={16} /></>}
+                {loading ? <Loader size={16} className="animate-spin" /> : <><span>Create Account</span><ArrowRight size={16} /></>}
               </button>
+
+              <p className="text-center text-xs text-white/30 pt-1">
+                Already have an account?{' '}
+                <button type="button" onClick={() => switchMode('signin')} className="text-cyber-cyan/70 hover:text-cyber-cyan transition-colors font-medium">
+                  Sign in
+                </button>
+              </p>
             </form>
           )}
         </div>

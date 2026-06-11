@@ -4,6 +4,7 @@ import {
   Sun, Moon, Check, Trash2, ToggleLeft, ToggleRight, Volume2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { useChatHistory } from '../context/ChatHistoryContext';
 
 const LANGUAGES = [
   { id: 'auto', label: '🔍 Auto-detect', sub: 'Any Indian language', flag: '🔍' },
@@ -67,7 +68,13 @@ const Settings = ({
   voiceSpeed, setVoiceSpeed,
   apiKey, setApiKey
 }) => {
+  const { getStorageUsage, deleteAllSessions } = useChatHistory();
   const [activeSection, setActiveSection] = useState('language');
+  const [storageUsed, setStorageUsed] = useState(0);
+
+  useEffect(() => {
+    setStorageUsed(getStorageUsage());
+  }, [getStorageUsage]);
 
   // Language
   const [secondaryLang, setSecondaryLang] = useState(() => localStorage.getItem('vani_secondary_lang') || 'en-IN');
@@ -122,7 +129,6 @@ const Settings = ({
         credentials: 'include',
         body: JSON.stringify({ key: apiKey })
       });
-      localStorage.setItem('sarvam_user_key', apiKey);
       setApiStatus('session');
       showSaved('api');
       celebrate();
@@ -427,6 +433,21 @@ const Settings = ({
             </div>
             <Toggle value={analytics} onChange={setAnalytics} />
           </div>
+        </div>
+
+        <div className="glass-panel p-5 rounded-xl border border-white/5 bg-white/5">
+          <h4 className="text-sm font-bold text-white mb-1">Chat History Storage</h4>
+          <p className="text-xs text-white/40 font-medium mb-4">{storageUsed} KB of 5MB used</p>
+          <button onClick={() => {
+            if (confirm('Clear all chat history? This cannot be undone.')) {
+               deleteAllSessions();
+               setStorageUsed(getStorageUsage());
+            }
+          }}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl text-xs font-bold transition-all cursor-pointer">
+            <Trash2 size={14} />
+            Clear All Chat History
+          </button>
         </div>
 
         <div className="glass-panel p-5 rounded-xl border border-red-500/15 bg-red-500/5">

@@ -39,21 +39,42 @@ Vani AI is a premium, dark-themed voice assistant that speaks and understands **
 
 ## 🚀 Quick Start
 
-### Prerequisites
-- Node.js 18+
-- npm 9+
+### Option 1: One-Command Production Deploy (Docker)
 
-### 1. Clone & install
+Ensure you have Docker and Docker Compose installed.
 
 ```bash
 git clone https://github.com/your-username/vani-ai.git
 cd vani-ai
 
-# Install all dependencies
-npm run install-all
+# Copy production env and add your passwords/keys
+cp .env.production.example .env
+
+# Spin up the PostgreSQL DB and Node backend
+docker-compose up -d --build
+```
+Vani AI will now be running on **http://localhost:5000**.
+
+### Option 2: Local Development Setup
+
+#### Prerequisites
+- Node.js 20+
+- npm 9+
+
+#### 1. Clone & install
+
+```bash
+git clone https://github.com/your-username/vani-ai.git
+cd vani-ai
+
+# Install backend dependencies
+cd backend && npm install
+
+# Install frontend dependencies (open a new terminal)
+cd frontend && npm install
 ```
 
-### 2. Configure environment
+#### 2. Configure environment
 
 ```bash
 # Backend
@@ -61,11 +82,14 @@ cp backend/.env.example backend/.env
 # Edit backend/.env and add your API keys
 ```
 
-### 3. Run development servers
+#### 3. Run development servers (Two Terminal Windows)
 
 ```bash
-# Start both frontend + backend concurrently
-npm run dev
+# Terminal 1 (Backend)
+cd backend && npm run dev
+
+# Terminal 2 (Frontend)
+cd frontend && npm run dev
 ```
 
 - **Frontend**: http://localhost:5173
@@ -75,16 +99,18 @@ npm run dev
 
 ## 🔑 Environment Variables
 
-| Variable | Required | Description |
+| Variable | Context | Description |
 |---|---|---|
-| `SARVAM_API_KEY` | Recommended | Sarvam AI subscription key — get at [sarvam.ai](https://sarvam.ai) |
-| `OPENAI_API_KEY` | Optional | GPT-4o-mini fallback |
-| `GEMINI_API_KEY` | Optional | Gemini 2.5 Flash fallback |
-| `ALLOWED_ORIGIN` | Optional | Frontend origin for CORS (default: `http://localhost:5173`) |
-| `SESSION_SECRET` | Optional | Change in production |
-| `PORT` | Optional | Backend port (default: `5000`) |
+| `POSTGRES_PASSWORD` | Docker | Database password for the Postgres container |
+| `SESSION_SECRET` | Backend | Cryptographic secret for express-session |
+| `ENCRYPTION_KEY` | Backend | 32-byte hex string for AES-256-GCM API Key encryption |
+| `SARVAM_API_KEY` | Backend | (Optional) Sarvam AI subscription key — [sarvam.ai](https://sarvam.ai) |
+| `OPENAI_API_KEY` | Backend | (Optional) GPT-4o-mini fallback |
+| `GEMINI_API_KEY` | Backend | (Optional) Gemini 2.5 Flash fallback |
+| `GOOGLE_CLIENT_ID` | Backend | (Optional) Google OAuth Client ID |
+| `GOOGLE_CLIENT_SECRET` | Backend | (Optional) Google OAuth Client Secret |
 
-> Without any API key, Vani AI runs in **Simulator Mode** with pre-built Indian language responses and browser speech synthesis.
+> Without any API key, Vani AI safely falls back to **Simulator Mode** using pre-built Indian language responses and browser speech synthesis.
 
 ---
 
@@ -98,32 +124,22 @@ vani-ai/
 │       ├── components/ # Sidebar, VoiceOrb, SuggestionCards
 │       ├── pages/     # Home, Chat, Assistant, Settings, Login
 │       └── hooks/     # useVoiceRecorder (STT + TTS)
-└── backend/           # Express.js
-    └── routes/
-        ├── ai.js      # LLM chat completions (Sarvam → OpenAI → Gemini)
-        ├── voice.js   # STT, TTS, Translation, Bridge Mode
-        └── auth.js    # Session-based API key storage
+├── backend/           # Express.js
+│   ├── routes/
+│   │   ├── ai.js      # LLM chat completions (Sarvam → OpenAI → Gemini)
+│   │   ├── voice.js   # STT, TTS, Translation, Bridge Mode
+│   │   └── auth.js    # Session-based API key storage
+│   └── server.js      # Serves React static files in production
+├── .github/workflows  # CI/CD pipelines
+├── docker-compose.yml # PostgreSQL + Node.js orchestrator
+└── .env.production.example # Production environment template
 ```
 
 ---
 
-## ☁️ Deployment
+## ☁️ CI/CD
 
-### Frontend → Vercel
-
-```bash
-cd frontend
-npm run build
-# Deploy dist/ to Vercel
-```
-
-### Backend → Railway
-
-1. Create a new Railway project
-2. Connect your GitHub repo
-3. Set root directory to `backend/`
-4. Add environment variables from `.env.example`
-5. Railway auto-deploys on push
+Vani AI includes a pre-configured **GitHub Actions Workflow** (`.github/workflows/ci.yml`) that automatically runs the Vitest unit tests (Frontend & Backend) and ESLint on every push or pull request to ensure deployment stability.
 
 ---
 

@@ -41,6 +41,8 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
   const ttsQueueRef   = useRef([]);
   const isPlayingRef  = useRef(false);
 
+  const transcriptPromiseRef = useRef(null);
+
   // ─── Load voices properly via onvoiceschanged ─────────────────────────────────
   useEffect(() => {
     if (!window.speechSynthesis) return;
@@ -144,14 +146,21 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
       recorder.onstop = async () => {
         const blob = new Blob(audioChunksRef.current, { type: actualMimeType });
         const browserTranscript = transcriptRef.current.trim();
+        let finalTranscript = browserTranscript;
         if (!browserTranscript) {
           const sttResult = await submitAudioToSTT(blob, actualMimeType);
           if (sttResult) {
+            finalTranscript = sttResult;
             transcriptRef.current = sttResult;
             setTranscript(sttResult);
           }
         }
         setAudioBlob(blob);
+        
+        if (transcriptPromiseRef.current) {
+          transcriptPromiseRef.current.resolve(finalTranscript);
+          transcriptPromiseRef.current = null;
+        }
       };
 
       recorder.start(200);
@@ -347,16 +356,38 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     if (!blob) return;
     const mimeType = 'audio/wav';
     setAudioMimeType(mimeType);
+    let finalTranscript = '';
     const sttResult = await submitAudioToSTT(blob, mimeType);
     if (sttResult) {
+      finalTranscript = sttResult;
       transcriptRef.current = sttResult;
       setTranscript(sttResult);
     }
     setAudioBlob(blob);
+    if (transcriptPromiseRef.current) {
+      transcriptPromiseRef.current.resolve(finalTranscript);
+      transcriptPromiseRef.current = null;
+    }
   }, [submitAudioToSTT]);
 
   // resetAudioBlob — allows components to clear blob after processing
   const resetAudioBlob = useCallback(() => setAudioBlob(null), []);
+
+  const waitForTranscript = useCallback(() => {
+    return new Promise((resolve, reject) => {
+      if (transcriptRef.current.trim()) {
+        resolve(transcriptRef.current.trim());
+        return;
+      }
+      transcriptPromiseRef.current = { resolve, reject };
+      setTimeout(() => {
+        if (transcriptPromiseRef.current && transcriptPromiseRef.current.reject === reject) {
+          transcriptPromiseRef.current.reject(new Error('Timeout waiting for transcript'));
+          transcriptPromiseRef.current = null;
+        }
+      }, 3000);
+    });
+  }, []);
 
   return {
     isRecording,
@@ -376,5 +407,9 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     streamAndSpeak,
     clearTTSQueue,
     setExternalAudioBlob,
+    waitForTranscript,
+    // Exports for testing
+    getSupportedMimeType,
+    submitAudioToSTT,
   };
 };

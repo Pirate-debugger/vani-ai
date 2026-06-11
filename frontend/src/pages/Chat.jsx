@@ -20,6 +20,7 @@ const Chat = ({
   const {
     isRecording,
     isSttLoading,
+    isSpeaking,
     transcript,
     liveTranscript,
     audioBlob,
@@ -30,21 +31,43 @@ const Chat = ({
     resetAudioBlob
   } = voiceRecorder;
 
+  const getErrorMessage = (error) => {
+    if (!error.response && error.message === 'Network Error') {
+      return "Connection lost. Check your internet and try again.";
+    }
+    const status = error.response?.status;
+    const msg = error.response?.data?.error || error.message;
+    
+    if (status === 429) return "Too many requests. Please wait a moment before trying again.";
+    if (status === 503) return "Sarvam AI service is temporarily unavailable. Try again in a few seconds.";
+    if (status === 400 && msg?.toLowerCase().includes('audio')) return "No audio detected. Try speaking louder or closer to the mic.";
+    return "Something went wrong. The backend may be offline.";
+  };
+
   // Auto-scroll on new messages
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isThinking]);
 
-  // STT race condition fix: retry until transcript settles
+  // STT race condition fix: wait for transcript promise
   useEffect(() => {
     if (!audioBlob) return;
     const waitAndSubmit = async () => {
-      let tries = 0;
-      while (!transcript.trim() && tries++ < 12)
-        await new Promise(r => setTimeout(r, 150));
-      const text = transcript.trim() || liveTranscript.trim();
-      if (text) await submitMessage(text);
-      resetAudioBlob?.();
+      try {
+        const text = await voiceRecorder.waitForTranscript();
+        if (text) await submitMessage(text);
+      } catch (err) {
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: "Couldn't hear you clearly, please try again",
+          model: 'vani-simulator',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          simulated: true
+        }]);
+      } finally {
+        resetAudioBlob?.();
+      }
     };
     waitAndSubmit();
   }, [audioBlob]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -89,7 +112,7 @@ const Chat = ({
       setMessages(prev => [...prev, {
         id: (Date.now() + 2).toString(),
         role: 'assistant',
-        content: 'Sorry, something went wrong. Please try again.',
+        content: getErrorMessage(err),
         model: 'error',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         simulated: true
@@ -199,12 +222,19 @@ const Chat = ({
                     
                     {/* Icon/Avatar */}
                     <div className={`
-                      w-7 h-7 sm:w-8 sm:h-8 min-w-7 sm:min-w-8 rounded-lg flex items-center justify-center border text-xs font-bold flex-shrink-0
+                      w-7 h-7 sm:w-8 sm:h-8 min-w-7 sm:min-w-8 rounded-lg flex items-center justify-center border text-xs font-bold flex-shrink-0 relative
                       ${isUser 
                         ? 'bg-cyber-cyan/10 border-cyber-cyan/20 text-cyber-cyan' 
                         : 'bg-cyber-purple/10 border-cyber-purple/20 text-cyber-neonPurple'}
                     `}>
                       {isUser ? <User size={12} /> : 'V'}
+                      {(!isUser && isSpeaking && msg.id === [...messages].reverse().find(m => m.role === 'assistant')?.id) && (
+                        <div className="absolute -bottom-1 -right-1 bg-[#07050F] rounded-full p-[2px] flex items-center gap-[2px]">
+                          <div className="w-1 h-[6px] bg-cyber-cyan animate-waveform" style={{ animationDelay: '0ms' }} />
+                          <div className="w-1 h-[10px] bg-cyber-cyan animate-waveform" style={{ animationDelay: '150ms' }} />
+                          <div className="w-1 h-[6px] bg-cyber-cyan animate-waveform" style={{ animationDelay: '300ms' }} />
+                        </div>
+                      )}
                     </div>
 
                     {/* Chat Bubble content */}

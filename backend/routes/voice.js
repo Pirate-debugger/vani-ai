@@ -2,17 +2,48 @@ import express from 'express';
 import multer from 'multer';
 import axios from 'axios';
 import FormData from 'form-data';
+import prisma from '../lib/prisma.js';
+import { decryptKey } from '../lib/crypto.js';
 
 const router = express.Router();
 
 // Setup Multer for handling file uploads in-memory
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('audio/')) {
+      cb(null, true);
+    } else {
+      const err = new Error('Only audio files are accepted');
+      err.status = 415;
+      cb(err, false);
+    }
+  }
 });
 
-// Helper to resolve Sarvam API key — session first, then env
-const getSarvamKey = (req) => req?.session?.sarvamKey || process.env.SARVAM_API_KEY;
+// Helper to resolve Sarvam API key — request cache first, then DB, then env
+const getSarvamKey = async (req) => {
+  if (req.cachedSarvamKey) return req.cachedSarvamKey;
+
+  const user = req.user || req.session?.localUser;
+  if (user && user.id) {
+    try {
+      const apiKeyRow = await prisma.apiKey.findUnique({
+        where: { userId_provider: { userId: user.id, provider: 'sarvam' } }
+      });
+      if (apiKeyRow && apiKeyRow.encryptedKey) {
+        const decrypted = decryptKey(apiKeyRow.encryptedKey);
+        req.cachedSarvamKey = decrypted;
+        return decrypted;
+      }
+    } catch (err) {
+      console.error('Error fetching API key from DB:', err);
+    }
+  }
+
+  return process.env.SARVAM_API_KEY;
+};
 
 /**
  * 1. Speech-to-Text Endpoint (/api/voice/stt)
@@ -27,7 +58,7 @@ router.post('/stt', upload.single('file'), async (req, res, next) => {
       return res.status(400).json({ error: 'No audio file provided.' });
     }
 
-    const apiKey = getSarvamKey(req);
+    const apiKey = await getSarvamKey(req);
 
     if (!apiKey) {
       // --- SIMULATOR MODE FALLBACK ---
@@ -110,7 +141,7 @@ router.post('/tts', async (req, res, next) => {
     else if (langCode.startsWith('mr')) defaultSpeaker = 'manisha';
     const chosenSpeaker = speaker || defaultSpeaker;
 
-    const apiKey = getSarvamKey(req);
+    const apiKey = await getSarvamKey(req);
 
     if (!apiKey) {
       // --- SIMULATOR MODE FALLBACK ---
@@ -182,7 +213,7 @@ router.post('/translate', async (req, res, next) => {
     const tgtLang = target_language_code || 'hi-IN';
     const translationMode = mode || 'formal';
 
-    const apiKey = getSarvamKey(req);
+    const apiKey = await getSarvamKey(req);
 
     if (!apiKey) {
       // --- SIMULATOR MODE FALLBACK ---
@@ -253,9 +284,15 @@ router.post('/translate', async (req, res, next) => {
  * Full bilingual pipeline: STT(sourceLang) → Translate → LLM(targetLang) → TTS(targetLang)
  */
 router.post('/bridge', async (req, res, next) => {
+  req.on('close', () => {
+    console.log('[Bridge] Client disconnected prematurely');
+  });
+
+  const STEP_TIMEOUT = 15000; // 15 seconds per step
+
   try {
     const { audioBase64, sourceLang, targetLang, mimeType } = req.body;
-    const apiKey = getSarvamKey(req);
+    const apiKey = await getSarvamKey(req);
 
     if (!apiKey) {
       return res.status(400).json({
@@ -266,60 +303,90 @@ router.post('/bridge', async (req, res, next) => {
     if (!audioBase64) return res.status(400).json({ error: 'audioBase64 is required.' });
 
     // Step 1: STT in sourceLang
-    const audioBuffer = Buffer.from(audioBase64, 'base64');
-    const ext = (mimeType || 'audio/webm').split('/')[1]?.split(';')[0] || 'webm';
-    const sttForm = new FormData();
-    sttForm.append('file', audioBuffer, {
-      filename: `input.${ext}`,
-      contentType: mimeType || 'audio/webm'
-    });
-    sttForm.append('model', 'saaras:v3');
-    sttForm.append('language_code', sourceLang);
-    const sttRes = await axios.post('https://api.sarvam.ai/speech-to-text', sttForm, {
-      headers: { 'api-subscription-key': apiKey, ...sttForm.getHeaders() }
-    });
-    const transcript = sttRes.data.transcript;
+    let transcript;
+    try {
+      const audioBuffer = Buffer.from(audioBase64, 'base64');
+      const ext = (mimeType || 'audio/webm').split('/')[1]?.split(';')[0] || 'webm';
+      const sttForm = new FormData();
+      sttForm.append('file', audioBuffer, {
+        filename: `input.${ext}`,
+        contentType: mimeType || 'audio/webm'
+      });
+      sttForm.append('model', 'saaras:v3');
+      sttForm.append('language_code', sourceLang);
+      const sttRes = await axios.post('https://api.sarvam.ai/speech-to-text', sttForm, {
+        headers: { 'api-subscription-key': apiKey, ...sttForm.getHeaders() },
+        timeout: STEP_TIMEOUT
+      });
+      transcript = sttRes.data.transcript;
+    } catch (err) {
+      throw new Error(`Bridge step failed at STT: ${err.message}`);
+    }
 
     // Step 2: Translate sourceLang → targetLang
-    const translateRes = await axios.post('https://api.sarvam.ai/translate', {
-      input: transcript,
-      source_language_code: sourceLang,
-      target_language_code: targetLang,
-      model: 'mayura:v1',
-      mode: 'formal'
-    }, { headers: { 'api-subscription-key': apiKey, 'Content-Type': 'application/json' } });
-    const translatedText = translateRes.data.translated_text;
+    let translatedText;
+    try {
+      const translateRes = await axios.post('https://api.sarvam.ai/translate', {
+        input: transcript,
+        source_language_code: sourceLang,
+        target_language_code: targetLang,
+        model: 'mayura:v1',
+        mode: 'formal'
+      }, { 
+        headers: { 'api-subscription-key': apiKey, 'Content-Type': 'application/json' },
+        timeout: STEP_TIMEOUT
+      });
+      translatedText = translateRes.data.translated_text;
+    } catch (err) {
+      throw new Error(`Bridge step failed at Translate: ${err.message}`);
+    }
 
     // Step 3: LLM response in targetLang
-    const llmRes = await axios.post('https://api.sarvam.ai/v1/chat/completions', {
-      model: 'sarvam-105b',
-      messages: [
-        {
-          role: 'system',
-          content: `You are Vani AI. Reply in the language of code "${targetLang}". Keep replies under 4 sentences, suitable for voice output.`
-        },
-        { role: 'user', content: translatedText }
-      ],
-      max_tokens: 300,
-      temperature: 0.7
-    }, { headers: { 'api-subscription-key': apiKey, 'Content-Type': 'application/json' } });
-    const llmReply = llmRes.data.choices[0].message.content;
+    let llmReply;
+    try {
+      const llmRes = await axios.post('https://api.sarvam.ai/v1/chat/completions', {
+        model: 'sarvam-105b',
+        messages: [
+          {
+            role: 'system',
+            content: `You are Vani AI. Reply in the language of code "${targetLang}". Keep replies under 4 sentences, suitable for voice output.`
+          },
+          { role: 'user', content: translatedText }
+        ],
+        max_tokens: 300,
+        temperature: 0.7
+      }, { 
+        headers: { 'api-subscription-key': apiKey, 'Content-Type': 'application/json' },
+        timeout: STEP_TIMEOUT
+      });
+      llmReply = llmRes.data.choices[0].message.content;
+    } catch (err) {
+      throw new Error(`Bridge step failed at LLM: ${err.message}`);
+    }
 
     // Step 4: TTS in targetLang
-    let defaultSpeaker = 'anushka';
-    if (targetLang.startsWith('ta')) defaultSpeaker = 'arya';
-    else if (targetLang.startsWith('en')) defaultSpeaker = 'abhilash';
-    else if (targetLang.startsWith('mr')) defaultSpeaker = 'manisha';
+    let audioContent;
+    try {
+      let defaultSpeaker = 'anushka';
+      if (targetLang.startsWith('ta')) defaultSpeaker = 'arya';
+      else if (targetLang.startsWith('en')) defaultSpeaker = 'abhilash';
+      else if (targetLang.startsWith('mr')) defaultSpeaker = 'manisha';
 
-    const ttsRes = await axios.post('https://api.sarvam.ai/text-to-speech', {
-      text: llmReply.substring(0, 500),
-      target_language_code: targetLang,
-      speaker: defaultSpeaker,
-      model: 'bulbul:v2',
-      speech_sample_rate: 22050,
-      enable_preprocessing: true
-    }, { headers: { 'api-subscription-key': apiKey, 'Content-Type': 'application/json' } });
-    const audioContent = ttsRes.data.audios?.[0] || null;
+      const ttsRes = await axios.post('https://api.sarvam.ai/text-to-speech', {
+        text: llmReply.substring(0, 500),
+        target_language_code: targetLang,
+        speaker: defaultSpeaker,
+        model: 'bulbul:v2',
+        speech_sample_rate: 22050,
+        enable_preprocessing: true
+      }, { 
+        headers: { 'api-subscription-key': apiKey, 'Content-Type': 'application/json' },
+        timeout: STEP_TIMEOUT
+      });
+      audioContent = ttsRes.data.audios?.[0] || null;
+    } catch (err) {
+      throw new Error(`Bridge step failed at TTS: ${err.message}`);
+    }
 
     return res.json({ transcript, translatedText, llmReply, audioContent, sourceLang, targetLang });
   } catch (err) {

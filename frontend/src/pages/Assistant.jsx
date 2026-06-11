@@ -61,6 +61,19 @@ const Assistant = ({
     setOrbState(s);
   };
 
+  const getErrorMessage = (error) => {
+    if (!error.response && error.message === 'Network Error') {
+      return "Connection lost. Check your internet and try again.";
+    }
+    const status = error.response?.status;
+    const msg = error.response?.data?.error || error.message;
+    
+    if (status === 429) return "Too many requests. Please wait a moment before trying again.";
+    if (status === 503) return "Sarvam AI service is temporarily unavailable. Try again in a few seconds.";
+    if (status === 400 && msg?.toLowerCase().includes('audio')) return "No audio detected. Try speaking louder or closer to the mic.";
+    return "Something went wrong. The backend may be offline.";
+  };
+
   const {
     isRecording,
     transcript,
@@ -145,42 +158,33 @@ const Assistant = ({
     if (!audioBlob) return;
 
     const handleVoiceSubmit = async () => {
-      // Wait for transcript to settle
-      let tries = 0;
-      while (!transcript.trim() && tries++ < 12) {
-        await new Promise(r => setTimeout(r, 150));
-      }
-      const spokenText = transcript.trim() || liveTranscript.trim();
-
-      if (!spokenText) {
-        setOrbStateSafe('idle');
-        setSessionStatus('Voice Session Active');
-        setCaptions("I couldn't catch that. Tap the mic to try again.");
-        clearTTSQueue?.();
-        resetAudioBlob?.();
-        return;
-      }
-
-      // Bridge mode uses existing pipeline
-      if (bridgeMode) {
-        await handleBridgeSubmit(spokenText);
-        resetAudioBlob?.();
-        return;
-      }
-
-      setOrbStateSafe('thinking');
-      setSessionStatus('Generating Response...');
-      setCaptions(`"${spokenText}"`);
-
-      const updatedHistory = [
-        ...conversationHistory,
-        { role: 'user', content: spokenText }
-      ];
-      setConversationHistory(updatedHistory);
-
-      let streamedText = '';
-
       try {
+        const text = await voiceRecorder.waitForTranscript();
+        if (!text) {
+          setOrbStateSafe('idle');
+          setSessionStatus('Voice Session Active');
+          setCaptions("I couldn't catch that. Tap the mic to try again.");
+          clearTTSQueue?.();
+          return;
+        }
+
+        // Bridge mode uses existing pipeline
+        if (bridgeMode) {
+          await handleBridgeSubmit(text);
+          return;
+        }
+
+        setOrbStateSafe('thinking');
+        setSessionStatus('Generating Response...');
+        setCaptions(`"${text}"`);
+
+        const updatedHistory = [
+          ...conversationHistory,
+          { role: 'user', content: text }
+        ];
+        setConversationHistory(updatedHistory);
+
+        let streamedText = '';
         setOrbStateSafe('speaking');
         setSessionStatus('Speaking...');
 
@@ -205,11 +209,15 @@ const Assistant = ({
         console.error(err);
         setOrbStateSafe('idle');
         setSessionStatus('Voice Session Active');
-        setCaptions("Something went wrong. Tap the mic to try again.");
+        setCaptions(getErrorMessage(err));
         clearTTSQueue?.();
+      } finally {
+        if (orbStateRef.current === 'thinking') {
+          setOrbStateSafe('idle');
+          setSessionStatus('Voice Session Active');
+        }
+        resetAudioBlob?.();
       }
-
-      resetAudioBlob?.();
     };
 
     handleVoiceSubmit();
@@ -265,6 +273,11 @@ const Assistant = ({
       setOrbStateSafe('idle');
       setSessionStatus('Voice Session Active');
       setCaptions('Bridge Mode requires a Sarvam API key. Check Settings.');
+    } finally {
+      if (orbStateRef.current === 'thinking') {
+        setOrbStateSafe('idle');
+        setSessionStatus('Voice Session Active');
+      }
     }
   };
 
@@ -302,7 +315,7 @@ const Assistant = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#040209] justify-between px-4 sm:p-6 pt-4 sm:pt-6 pb-4 sm:pb-6 relative overflow-hidden">
+    <div className="flex-1 flex flex-col h-full bg-transparent dark:bg-[#040209] justify-between px-4 sm:p-6 pt-4 sm:pt-6 pb-4 sm:pb-6 relative overflow-hidden">
       
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(138,43,226,0.12)_0%,transparent_70%)] pointer-events-none" />
       
@@ -354,18 +367,20 @@ const Assistant = ({
       </div>
 
       {/* Orb — responsive sizing */}
-      <div className="flex-1 flex flex-col items-center justify-center relative min-h-[200px] sm:min-h-[350px] z-10">
-        <div className="w-48 h-48 sm:w-72 sm:h-72 md:w-80 md:h-80 lg:w-96 lg:h-96 relative">
-          <VoiceOrb state={orbState} isListening={isRecording} audioAnalyser={audioAnalyser} />
-        </div>
-        {bridgeMode && (
-          <div className="mt-3 sm:mt-4 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-cyber-cyan/10 border border-cyber-cyan/20 text-[10px] sm:text-xs font-bold text-cyber-cyan">
-            <Radio size={11} className="animate-pulse" />
-            <span>{LANGUAGES.find(l => l.code === currentLang)?.label || currentLang}</span>
-            <ArrowLeftRight size={11} />
-            <span>{LANGUAGES.find(l => l.code === secondaryLang)?.label || secondaryLang}</span>
+      <div className="w-full flex-1 flex flex-col justify-center" style={{ maxHeight: 'calc(100vh - 128px)' }}>
+        <div className="flex flex-col items-center justify-center relative z-10 w-full" style={{ height: 'clamp(200px, 40vh, 420px)' }}>
+          <div className="w-48 h-48 sm:w-72 sm:h-72 md:w-80 md:h-80 lg:w-96 lg:h-96 relative flex items-center justify-center">
+            <VoiceOrb state={orbState} isListening={isRecording} audioAnalyser={audioAnalyser} />
           </div>
-        )}
+          {bridgeMode && (
+            <div className="mt-3 sm:mt-4 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-cyber-cyan/10 border border-cyber-cyan/20 text-[10px] sm:text-xs font-bold text-cyber-cyan">
+              <Radio size={11} className="animate-pulse" />
+              <span>{LANGUAGES.find(l => l.code === currentLang)?.label || currentLang}</span>
+              <ArrowLeftRight size={11} />
+              <span>{LANGUAGES.find(l => l.code === secondaryLang)?.label || secondaryLang}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Captions */}

@@ -1,8 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 
+const SINE_TABLE = Array.from({ length: 1000 }, (_, i) => Math.sin((i / 1000) * Math.PI * 2));
+const fastSin = (angle) => SINE_TABLE[Math.floor(((angle % (Math.PI * 2)) / (Math.PI * 2)) * 1000 + 1000) % 1000];
+
+const TARGET_FPS = { idle: 10, thinking: 20, listening: 60, speaking: 30 };
+
 const VoiceOrb = ({ state, isListening, audioAnalyser }) => {
   const canvasRef = useRef(null);
   const animationRef = useRef(null);
+  const lastFrameTime = useRef(0);
 
   // Colors based on state
   const colors = {
@@ -50,6 +56,14 @@ const VoiceOrb = ({ state, isListening, audioAnalyser }) => {
     const dataArray = audioAnalyser ? new Uint8Array(audioAnalyser.frequencyBinCount) : null;
 
     const render = () => {
+      const fpsInterval = 1000 / (TARGET_FPS[state] || 30);
+      const now = performance.now();
+      if (now - lastFrameTime.current < fpsInterval) {
+        animationRef.current = requestAnimationFrame(render);
+        return; // skip this frame
+      }
+      lastFrameTime.current = now;
+
       const w = canvas.width / window.devicePixelRatio;
       const h = canvas.height / window.devicePixelRatio;
       const xc = w / 2;
@@ -72,11 +86,11 @@ const VoiceOrb = ({ state, isListening, audioAnalyser }) => {
       if (state === 'listening') {
         baseRadius += amplitude * 0.6; // React to real voice volume
       } else if (state === 'speaking') {
-        baseRadius += Math.sin(phase * 4) * 8 + 4; // Simulated speech pulse
+        baseRadius += fastSin(phase * 4) * 8 + 4; // Simulated speech pulse
       } else if (state === 'thinking') {
-        baseRadius += Math.sin(phase * 1.5) * 3;
+        baseRadius += fastSin(phase * 1.5) * 3;
       } else {
-        baseRadius += Math.sin(phase * 0.5) * 5; // Gentle breath in idle
+        baseRadius += fastSin(phase * 0.5) * 5; // Gentle breath in idle
       }
 
       // Draw Orb Gloom Shadows
@@ -95,7 +109,7 @@ const VoiceOrb = ({ state, isListening, audioAnalyser }) => {
       const layersCount = 3;
       for (let layer = 0; layer < layersCount; layer++) {
         ctx.beginPath();
-        const points = 80;
+        const points = (state === 'listening') ? 80 : 40;
         
         // Vary rotation phase per layer
         const angleOffset = (layer * Math.PI * 2) / layersCount + phase * (state === 'thinking' ? 1.5 : 0.4);
@@ -107,14 +121,14 @@ const VoiceOrb = ({ state, isListening, audioAnalyser }) => {
           let offset = 0;
           if (state === 'listening') {
             const freq = 3 + layer * 2;
-            offset = Math.sin(angle * freq + phase * 6) * (15 + amplitude * 0.4);
+            offset = fastSin(angle * freq + phase * 6) * (15 + amplitude * 0.4);
           } else if (state === 'thinking') {
-            offset = Math.sin(angle * 6 + phase * 10) * 12;
+            offset = fastSin(angle * 6 + phase * 10) * 12;
           } else if (state === 'speaking') {
-            offset = Math.sin(angle * 4 + phase * 8) * (18 + Math.cos(phase) * 6);
+            offset = fastSin(angle * 4 + phase * 8) * (18 + Math.cos(phase) * 6);
           } else {
             // Idle gentle waves
-            offset = Math.sin(angle * (2 + layer) + phase * 1.8) * 8;
+            offset = fastSin(angle * (2 + layer) + phase * 1.8) * 8;
           }
 
           const r = baseRadius + offset;
@@ -165,8 +179,15 @@ const VoiceOrb = ({ state, isListening, audioAnalyser }) => {
 
     render();
 
+    const onVisibility = () => {
+      if (document.hidden) cancelAnimationFrame(animationRef.current);
+      else render(); // restart
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
     return () => {
       window.removeEventListener('resize', resize);
+      document.removeEventListener('visibilitychange', onVisibility);
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }
@@ -187,7 +208,7 @@ const VoiceOrb = ({ state, isListening, audioAnalyser }) => {
 
       <canvas 
         ref={canvasRef} 
-        className="w-full h-full max-w-[420px] max-h-[420px] filter drop-shadow-[0_0_50px_rgba(138,43,226,0.15)]"
+        className="w-full h-full max-w-[420px] max-[400px]:max-h-48 max-h-[420px] filter drop-shadow-[0_0_50px_rgba(138,43,226,0.15)]"
       />
     </div>
   );
