@@ -16,10 +16,13 @@ function resolveDbUrl() {
     if (!fs.existsSync(tmpDbPath)) {
       try {
         const templateDbPath = path.join(__dirname, '..', 'prisma', 'dev.db');
+        console.log(`[SQLite Workaround] Checking database template at: ${templateDbPath}`);
         if (fs.existsSync(templateDbPath)) {
+          console.log(`[SQLite Workaround] Template found! Copying to ${tmpDbPath}`);
           fs.copyFileSync(templateDbPath, tmpDbPath);
           fs.chmodSync(tmpDbPath, 0o666);
         } else {
+          console.warn(`[SQLite Workaround] Template NOT found! Creating empty SQLite file at ${tmpDbPath}`);
           fs.writeFileSync(tmpDbPath, '');
         }
       } catch (err) {
