@@ -128,7 +128,7 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
 
         {/* Mobile language dropdown */}
         {langOpen && (
-          <div className="absolute top-full left-0 right-0 glass-panel border-b border-white/10 z-50 grid grid-cols-4 gap-1 p-3">
+          <div className="absolute top-full left-0 right-0 glass-panel !bg-[#110e20] border-b border-white/10 z-50 grid grid-cols-4 gap-1 p-3">
             {LANGUAGES.map(lang => (
               <button
                 key={lang.code}
@@ -304,7 +304,7 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
               </button>
 
               {langOpen && (
-                <div className="absolute bottom-full left-0 right-0 mb-2 glass-panel border border-white/10 rounded-xl overflow-hidden shadow-xl z-50">
+                <div className="absolute bottom-full left-0 right-0 mb-2 glass-panel !bg-[#110e20] border border-white/10 rounded-xl overflow-hidden shadow-xl z-50">
                   {LANGUAGES.map(lang => (
                     <button
                       key={lang.code}
