@@ -11,6 +11,11 @@ const LANGUAGES = [
   { code: 'bn-IN', label: 'বাংলা' },
   { code: 'gu-IN', label: 'ગુજરાતી' },
   { code: 'kn-IN', label: 'ಕನ್ನಡ' },
+  { code: 'ml-IN', label: 'മലയാളം' },
+  { code: 'or-IN', label: 'ଓଡ଼ିଆ' },
+  { code: 'pa-IN', label: 'ਪੰਜਾਬੀ' },
+  { code: 'as-IN', label: 'অসমীয়া' },
+  { code: 'ur-IN', label: 'اردو' },
 ];
 
 // ─── float32ToWav helper for VAD ─────────────────────────────────────────────

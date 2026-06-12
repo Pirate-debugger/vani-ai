@@ -16,6 +16,11 @@ const LANGUAGES = [
   { id: 'bn-IN', label: 'বাংলা', sub: 'Bengali', flag: '🇮🇳' },
   { id: 'gu-IN', label: 'ગુજરાતી', sub: 'Gujarati', flag: '🇮🇳' },
   { id: 'kn-IN', label: 'ಕನ್ನಡ', sub: 'Kannada', flag: '🇮🇳' },
+  { id: 'ml-IN', label: 'മലയാളം', sub: 'Malayalam', flag: '🇮🇳' },
+  { id: 'or-IN', label: 'ଓଡ଼ିଆ', sub: 'Odia', flag: '🇮🇳' },
+  { id: 'pa-IN', label: 'ਪੰਜਾਬੀ', sub: 'Punjabi', flag: '🇮🇳' },
+  { id: 'as-IN', label: 'অসমীয়া', sub: 'Assamese', flag: '🇮🇳' },
+  { id: 'ur-IN', label: 'اردو', sub: 'Urdu', flag: '🇮🇳' },
 ];
 
 const SPEAKERS = [

@@ -14,6 +14,11 @@ const LANGUAGES = [
   { code: 'bn-IN', label: 'বাংলা', sub: 'Bengali' },
   { code: 'gu-IN', label: 'ગુજરાતી', sub: 'Gujarati' },
   { code: 'kn-IN', label: 'ಕನ್ನಡ', sub: 'Kannada' },
+  { code: 'ml-IN', label: 'മലയാളം', sub: 'Malayalam' },
+  { code: 'or-IN', label: 'ଓଡ଼ିଆ', sub: 'Odia' },
+  { code: 'pa-IN', label: 'ਪੰਜਾਬੀ', sub: 'Punjabi' },
+  { code: 'as-IN', label: 'অসমীয়া', sub: 'Assamese' },
+  { code: 'ur-IN', label: 'اردو', sub: 'Urdu' },
 ];
 
 function relativeTime(isoStr) {

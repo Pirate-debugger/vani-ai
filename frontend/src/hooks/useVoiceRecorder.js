@@ -230,6 +230,15 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
         if (langCode.startsWith('hi')) matchingVoice = voices.find(v => v.lang.startsWith('hi') || v.name.toLowerCase().includes('hindi'));
         else if (langCode.startsWith('mr')) matchingVoice = voices.find(v => v.lang.startsWith('mr'));
         else if (langCode.startsWith('ta')) matchingVoice = voices.find(v => v.lang.startsWith('ta') || v.name.toLowerCase().includes('tamil'));
+        else if (langCode.startsWith('te')) matchingVoice = voices.find(v => v.lang.startsWith('te') || v.name.toLowerCase().includes('telugu'));
+        else if (langCode.startsWith('bn')) matchingVoice = voices.find(v => v.lang.startsWith('bn') || v.name.toLowerCase().includes('bengali'));
+        else if (langCode.startsWith('gu')) matchingVoice = voices.find(v => v.lang.startsWith('gu') || v.name.toLowerCase().includes('gujarati'));
+        else if (langCode.startsWith('kn')) matchingVoice = voices.find(v => v.lang.startsWith('kn') || v.name.toLowerCase().includes('kannada'));
+        else if (langCode.startsWith('ml')) matchingVoice = voices.find(v => v.lang.startsWith('ml') || v.name.toLowerCase().includes('malayalam'));
+        else if (langCode.startsWith('or')) matchingVoice = voices.find(v => v.lang.startsWith('or') || v.name.toLowerCase().includes('odia'));
+        else if (langCode.startsWith('pa')) matchingVoice = voices.find(v => v.lang.startsWith('pa') || v.name.toLowerCase().includes('punjabi'));
+        else if (langCode.startsWith('as')) matchingVoice = voices.find(v => v.lang.startsWith('as') || v.name.toLowerCase().includes('assamese'));
+        else if (langCode.startsWith('ur')) matchingVoice = voices.find(v => v.lang.startsWith('ur') || v.name.toLowerCase().includes('urdu'));
         else matchingVoice = voices.find(v => v.lang === 'en-IN') || voices.find(v => v.name.toLowerCase().includes('india')) || voices.find(v => v.lang.startsWith('en'));
         if (matchingVoice) utterance.voice = matchingVoice;
       }
