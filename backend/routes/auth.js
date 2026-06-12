@@ -20,6 +20,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     },
     async (accessToken, refreshToken, profile, done) => {
       const user = {
+        id: profile.id,
         googleId: profile.id,
         name: profile.displayName,
         email: profile.emails?.[0]?.value || '',

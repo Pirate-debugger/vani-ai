@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { Sparkles, Mail, Lock, User, ArrowRight, Loader, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-// Backend URL for OAuth redirect (must bypass Vite proxy)
-const BACKEND_URL = 'http://localhost:5000';
+// Backend URL for OAuth redirect (must bypass Vite proxy in development)
+const BACKEND_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+  ? 'http://localhost:5000' 
+  : window.location.origin;
 
 const Login = ({ onLoginSuccess }) => {
   const { register, login, continueAsGuest } = useAuth();
