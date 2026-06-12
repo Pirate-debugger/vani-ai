@@ -29,6 +29,10 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
+if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+  app.set('trust proxy', 1);
+}
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
