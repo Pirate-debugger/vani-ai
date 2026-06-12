@@ -9,7 +9,8 @@
     "start": "node server.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "vercel-build": "prisma generate"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.8.0",
