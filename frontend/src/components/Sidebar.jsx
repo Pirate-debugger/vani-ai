@@ -113,6 +113,8 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
           <button
             onClick={() => setLangOpen(o => !o)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 text-xs font-bold"
+            title="Change primary language"
+            aria-label="Change primary language"
           >
             <Globe size={12} className="text-cyber-cyan" />
             <span>{currentLangObj.label.slice(0, 6)}</span>
@@ -120,6 +122,7 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
             className="p-2 text-white/80 hover:text-white rounded-lg hover:bg-white/5 transition-all"
+            title="Toggle menu"
             aria-label="Toggle menu"
           >
             {mobileOpen ? <X size={20} /> : <Menu size={20} />}
@@ -245,6 +248,7 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
                               : 'opacity-0 group-hover:opacity-100 text-white/20 hover:text-red-400'
                           }`}
                           title={pendingDeleteId === session.id ? "Confirm delete" : "Delete session"}
+                          aria-label={pendingDeleteId === session.id ? "Confirm delete recent chat session" : "Delete recent chat session"}
                         >
                           {pendingDeleteId === session.id ? <CheckCircle2 size={12} className="text-red-400" /> : <Trash2 size={11} />}
                         </button>
@@ -339,7 +343,7 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
                     <p className="text-xs text-white font-bold truncate">{user.name}</p>
                     <p className="text-[10px] text-white/30 truncate">{user.email}</p>
                   </div>
-                  <button onClick={logout} title="Sign out" className="p-1.5 text-white/25 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all flex-shrink-0">
+                  <button onClick={logout} title="Sign out" aria-label="Sign out" className="p-1.5 text-white/25 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all flex-shrink-0">
                     <LogOut size={14} />
                   </button>
                 </div>
@@ -352,7 +356,7 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
                     <p className="text-xs text-white/60 font-semibold">Guest Mode</p>
                     <p className="text-[10px] text-white/25">History not saved</p>
                   </div>
-                  <button onClick={logout} title="Go to login" className="text-[10px] text-cyber-cyan hover:text-white border border-cyber-cyan/20 hover:border-cyber-cyan/60 px-2 py-1 rounded-lg font-bold transition-all flex-shrink-0">
+                  <button onClick={logout} title="Go to login" aria-label="Sign in to save history" className="text-[10px] text-cyber-cyan hover:text-white border border-cyber-cyan/20 hover:border-cyber-cyan/60 px-2 py-1 rounded-lg font-bold transition-all flex-shrink-0">
                     Sign In
                   </button>
                 </div>
@@ -387,7 +391,7 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
               <p className="text-[9px] text-cyber-cyan font-bold tracking-widest uppercase">Saaras-Bulbul v3</p>
             </div>
           </div>
-          <button onClick={() => setMobileOpen(false)} className="p-2 text-white/50 hover:text-white">
+          <button onClick={() => setMobileOpen(false)} className="p-2 text-white/50 hover:text-white" title="Close menu" aria-label="Close menu">
             <X size={20} />
           </button>
         </div>
@@ -436,7 +440,7 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
                 {user?.name?.charAt(0)?.toUpperCase() || 'U'}
               </div>
               <p className="text-xs text-white/70 font-semibold flex-1 truncate">{user?.name}</p>
-              <button onClick={logout} className="p-1.5 text-white/30 hover:text-red-400 transition-colors"><LogOut size={13} /></button>
+              <button onClick={logout} className="p-1.5 text-white/30 hover:text-red-400 transition-colors" title="Sign out" aria-label="Sign out"><LogOut size={13} /></button>
             </div>
           ) : (
             <button onClick={() => { logout(); setMobileOpen(false); }} className="w-full py-2.5 bg-cyber-cyan/10 border border-cyber-cyan/20 rounded-xl text-cyber-cyan text-xs font-bold">

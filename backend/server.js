@@ -34,6 +34,8 @@ if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
 }
 
 app.use(helmet({
+  frameguard: false,
+  xXssProtection: false,
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
@@ -42,9 +44,17 @@ app.use(helmet({
       workerSrc: ["'self'", "blob:"],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
+      frameAncestors: ["'self'"],
     }
   }
 }));
+
+// API Header Optimizations to resolve audit warnings (removes unneeded headers and overrides Vercel must-revalidate cache directives)
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.removeHeader('Content-Security-Policy');
+  next();
+});
 
 const PORT = process.env.PORT || 5000;
 

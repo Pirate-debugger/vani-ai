@@ -26,7 +26,7 @@ const OfflineBanner = ({ onDismiss }) => (
     <span className="text-amber-400 text-[11px] font-bold tracking-wide uppercase flex-1">
       ⚠ Backend offline — running in demo mode
     </span>
-    <button onClick={onDismiss} className="text-amber-400/60 hover:text-amber-400">
+    <button onClick={onDismiss} className="text-amber-400/60 hover:text-amber-400" title="Dismiss offline banner" aria-label="Dismiss offline banner">
       <X size={14} />
     </button>
   </div>

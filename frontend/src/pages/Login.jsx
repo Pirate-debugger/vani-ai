@@ -193,6 +193,8 @@ const Login = ({ onLoginSuccess }) => {
                     placeholder="••••••••" required autoComplete="current-password"
                     className={`${inputClass} pr-10`} />
                   <button type="button" onClick={() => setShowPassword(v => !v)}
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors">
                     {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                   </button>
@@ -253,6 +255,8 @@ const Login = ({ onLoginSuccess }) => {
                     placeholder="Min. 6 characters" required autoComplete="new-password"
                     className={`${inputClass} pr-10`} />
                   <button type="button" onClick={() => setShowPassword(v => !v)}
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors">
                     {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                   </button>

@@ -21,13 +21,13 @@ const MAX_SESSIONS = 100;
 const MAX_MESSAGES_PER_SESSION = 200;
 
 export const ChatHistoryProvider = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { user, authLoading } = useAuth();
   const isGuest = user?.isGuest || false;
   const [sessions, setSessions] = useState([]);          // list of { id, title, createdAt, lang, messages }
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const persistTimerRef = React.useRef(null);
 
-  const isLoggedIn = !!user && !isGuest && !loading;
+  const isLoggedIn = !!user && !isGuest && !authLoading;
 
   // Load sessions from localStorage when user changes
   useEffect(() => {

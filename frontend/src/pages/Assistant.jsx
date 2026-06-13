@@ -344,6 +344,7 @@ const Assistant = ({
                 : 'bg-white/5 border-white/5 text-white/40 hover:text-white/60'
             }`}
             title="Bridge Mode: speak in one language, AI responds in another"
+            aria-label={bridgeMode ? 'Disable Bridge Mode' : 'Enable Bridge Mode'}
           >
             <ArrowLeftRight size={10} />
             <span className="hidden sm:inline">Bridge</span> {bridgeMode ? 'ON' : 'OFF'}
@@ -351,6 +352,9 @@ const Assistant = ({
 
           {bridgeMode && (
             <select
+              id="bridge-target-lang"
+              name="bridgeTargetLang"
+              aria-label="Bridge Mode target language"
               value={secondaryLang}
               onChange={(e) => {
                 setSecondaryLang(e.target.value);
@@ -421,6 +425,7 @@ const Assistant = ({
             muted ? 'bg-red-500/25 border-red-500/30 text-red-400' : 'bg-white/5 border-white/10 text-white/60 hover:text-white hover:bg-white/10'
           }`}
           title={muted ? 'Unmute' : 'Mute'}
+          aria-label={muted ? 'Unmute' : 'Mute'}
         >
           {muted ? <VolumeX size={17} /> : <Volume2 size={17} />}
         </button>
@@ -433,6 +438,7 @@ const Assistant = ({
             isRecording ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 'btn-glow text-white shadow-glow-neon'
           }`}
           title={vadMode ? 'Hands-free VAD active' : isRecording ? 'Stop recording' : 'Start recording'}
+          aria-label={vadMode ? 'Hands-free VAD active' : isRecording ? 'Stop recording' : 'Start recording'}
         >
           {isRecording ? <MicOff size={28} className="animate-pulse" /> : <Mic size={28} className="group-hover:scale-110 transition-transform" />}
         </button>
@@ -446,6 +452,7 @@ const Assistant = ({
               : 'bg-white/5 border-white/10 text-white/50 hover:text-white'
           }`}
           title={vadMode ? 'Disable hands-free mode' : 'Enable hands-free (auto-detect speech)'}
+          aria-label={vadMode ? 'Disable hands-free mode' : 'Enable hands-free (auto-detect speech)'}
         >
           {vadMode ? '🎙️' : <span className="text-[10px] font-black">VAD</span>}
         </button>
@@ -455,6 +462,7 @@ const Assistant = ({
           onClick={handleEndSession}
           className="w-11 h-11 sm:w-14 sm:h-14 rounded-full border border-red-500/20 bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center transition-all cursor-pointer hover:scale-105"
           title="End Voice Session"
+          aria-label="End Voice Session"
         >
           <PhoneOff size={17} />
         </button>

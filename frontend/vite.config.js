@@ -8,7 +8,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom'],
-          'vendor-framer': ['framer-motion'],
           'vendor-markdown': ['react-markdown'],
           'vendor-vad': ['@ricky0123/vad-web', 'onnxruntime-web'],
         }

@@ -190,6 +190,8 @@ const Chat = ({
           <button
             onClick={handleNewChat}
             className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg border border-cyber-cyan/15 bg-cyber-cyan/5 hover:bg-cyber-cyan/15 text-cyber-cyan/70 hover:text-cyber-cyan text-[10px] sm:text-xs font-bold transition-all cursor-pointer"
+            title="Start a new chat session"
+            aria-label="Start a new chat session"
           >
             <Plus size={12} />
             <span className="hidden sm:inline">New Chat</span>
@@ -198,6 +200,8 @@ const Chat = ({
             <button
               onClick={handleClearChat}
               className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg border border-red-500/10 bg-red-500/5 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-[10px] sm:text-xs font-bold transition-all cursor-pointer"
+              title="Clear chat history"
+              aria-label="Clear chat history"
             >
               <Trash2 size={12} />
               <span className="hidden sm:inline">Clear</span>
@@ -256,25 +260,29 @@ const Chat = ({
                         {isUser ? (
                           msg.content
                         ) : (
-                          <ReactMarkdown
-                            className="prose prose-sm max-w-none"
-                            components={{
-                              p: ({children}) => <p className="text-white/90 text-sm leading-relaxed my-1">{children}</p>,
-                              strong: ({children}) => <strong className="text-cyber-cyan font-bold">{children}</strong>,
-                              em: ({children}) => <em className="text-white/70 italic">{children}</em>,
-                              li: ({children}) => <li className="text-white/80 text-sm ml-4 list-disc">{children}</li>,
-                              ul: ({children}) => <ul className="my-1 space-y-0.5">{children}</ul>,
-                              ol: ({children}) => <ol className="my-1 space-y-0.5 list-decimal ml-4">{children}</ol>,
-                              code: ({children, inline}) => inline
-                                ? <code className="bg-white/10 px-1.5 py-0.5 rounded text-cyber-cyan font-mono text-xs">{children}</code>
-                                : <pre className="bg-white/5 border border-white/10 rounded-lg p-3 mt-2 overflow-x-auto"><code className="text-cyber-cyan font-mono text-xs">{children}</code></pre>,
-                              h1: ({children}) => <h1 className="text-white font-bold text-base mb-1">{children}</h1>,
-                              h2: ({children}) => <h2 className="text-white font-bold text-sm mb-1">{children}</h2>,
-                              h3: ({children}) => <h3 className="text-white/80 font-semibold text-sm">{children}</h3>,
-                            }}
-                          >
-                            {String(msg.content || '')}
-                          </ReactMarkdown>
+                          <div className="prose prose-sm max-w-none">
+                            <ReactMarkdown
+                              components={{
+                                p: ({children}) => <p className="text-white/90 text-sm leading-relaxed my-1">{children}</p>,
+                                strong: ({children}) => <strong className="text-cyber-cyan font-bold">{children}</strong>,
+                                em: ({children}) => <em className="text-white/70 italic">{children}</em>,
+                                li: ({children}) => <li className="text-white/80 text-sm ml-4 list-disc">{children}</li>,
+                                ul: ({children}) => <ul className="my-1 space-y-0.5">{children}</ul>,
+                                ol: ({children}) => <ol className="my-1 space-y-0.5 list-decimal ml-4">{children}</ol>,
+                                code: ({children, className, ...props}) => {
+                                  const isBlock = /language-/.test(className || '');
+                                  return isBlock
+                                    ? <pre className="bg-white/5 border border-white/10 rounded-lg p-3 mt-2 overflow-x-auto"><code className="text-cyber-cyan font-mono text-xs">{children}</code></pre>
+                                    : <code className="bg-white/10 px-1.5 py-0.5 rounded text-cyber-cyan font-mono text-xs">{children}</code>;
+                                },
+                                h1: ({children}) => <h1 className="text-white font-bold text-base mb-1">{children}</h1>,
+                                h2: ({children}) => <h2 className="text-white font-bold text-sm mb-1">{children}</h2>,
+                                h3: ({children}) => <h3 className="text-white/80 font-semibold text-sm">{children}</h3>,
+                              }}
+                            >
+                              {String(msg.content || '')}
+                            </ReactMarkdown>
+                          </div>
                         )}
                       </div>
 
@@ -289,6 +297,7 @@ const Chat = ({
                               onClick={() => handleReplay(msg.content)}
                               className="p-1 hover:text-cyber-cyan transition-colors cursor-pointer flex items-center gap-0.5"
                               title="Listen to response"
+                              aria-label="Listen to response"
                             >
                               <Volume2 size={12} />
                               <span>Listen</span>
@@ -297,6 +306,7 @@ const Chat = ({
                               onClick={() => navigator.clipboard?.writeText(msg.content)}
                               className="p-1 hover:text-cyber-cyan transition-colors cursor-pointer flex items-center gap-0.5 opacity-0 group-hover:opacity-100"
                               title="Copy response"
+                              aria-label="Copy response"
                             >
                               <Copy size={11} />
                             </button>
@@ -357,11 +367,14 @@ const Chat = ({
                 : 'bg-white/5 text-white/50 hover:text-white hover:bg-white/10'}
             `}
             title={isRecording ? 'Stop & send recording' : 'Start voice input'}
+            aria-label={isRecording ? 'Stop & send recording' : 'Start voice input'}
           >
             {isRecording ? <MicOff size={15} /> : <Mic size={15} />}
           </button>
 
           <input 
+            id="chat-message-input"
+            name="message"
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
@@ -380,6 +393,8 @@ const Chat = ({
             type="submit"
             disabled={!inputText.trim() || isThinking}
             className="p-2.5 sm:p-3.5 bg-cyber-purple hover:bg-cyber-purple/80 disabled:opacity-40 disabled:hover:bg-cyber-purple text-white rounded-xl transition-all cursor-pointer flex items-center justify-center flex-shrink-0"
+            title="Send message"
+            aria-label="Send message"
           >
             <Send size={14} />
           </button>

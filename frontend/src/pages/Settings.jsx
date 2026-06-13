@@ -59,8 +59,13 @@ const SavedBadge = ({ show }) => show ? (
   </span>
 ) : null;
 
-const Toggle = ({ value, onChange }) => (
-  <button onClick={() => onChange(!value)} className="flex-shrink-0 transition-colors">
+const Toggle = ({ value, onChange, label }) => (
+  <button
+    onClick={() => onChange(!value)}
+    className="flex-shrink-0 transition-colors"
+    title={label}
+    aria-label={label}
+  >
     {value
       ? <ToggleRight size={28} className="text-cyber-cyan" />
       : <ToggleLeft size={28} className="text-white/30" />}
@@ -267,9 +272,17 @@ const Settings = ({
             <span className="text-xs text-white/50 font-bold uppercase tracking-wider">Voice Speed</span>
             <span className="text-cyber-cyan text-xs font-bold bg-cyber-cyan/5 px-2 py-0.5 rounded border border-cyber-cyan/15">{voiceSpeed}x</span>
           </div>
-          <input type="range" min="0.5" max="2.0" step="0.1" value={voiceSpeed}
+          <input
+            id="settings-voice-speed"
+            name="voiceSpeed"
+            type="range"
+            min="0.5"
+            max="2.0"
+            step="0.1"
+            value={voiceSpeed}
             onChange={(e) => setVoiceSpeed(parseFloat(e.target.value))}
-            className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-cyber-cyan" />
+            className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-cyber-cyan"
+          />
           <div className="flex justify-between text-[10px] text-white/25 mt-1 font-medium">
             <span>Slow (0.5x)</span><span>Fast (2.0x)</span>
           </div>
@@ -281,14 +294,14 @@ const Settings = ({
               <p className="text-sm font-bold text-white">Auto-speak AI Responses</p>
               <p className="text-xs text-white/35 font-medium">Automatically play TTS after each reply</p>
             </div>
-            <Toggle value={autoSpeak} onChange={val => { setAutoSpeak(val); localStorage.setItem('vani_autospeak', String(val)); }} />
+            <Toggle value={autoSpeak} onChange={val => { setAutoSpeak(val); localStorage.setItem('vani_autospeak', String(val)); }} label="Toggle Auto-speak AI Responses" />
           </div>
           <div className="flex items-center justify-between glass-panel p-4 rounded-xl border border-white/5">
             <div>
               <p className="text-sm font-bold text-white">Hands-free VAD Mode</p>
               <p className="text-xs text-white/35 font-medium">Auto-submit after silence (Voice Activity Detection)</p>
             </div>
-            <Toggle value={vadMode} onChange={val => { setVadMode(val); localStorage.setItem('vani_vad', String(val)); }} />
+            <Toggle value={vadMode} onChange={val => { setVadMode(val); localStorage.setItem('vani_vad', String(val)); }} label="Toggle Hands-free VAD Mode" />
           </div>
         </div>
       </div>
@@ -377,9 +390,15 @@ const Settings = ({
         <form onSubmit={handleSaveApiKey} className="space-y-3">
           <div>
             <label className="block text-xs text-white/40 font-bold uppercase tracking-wider mb-1.5">Sarvam AI Subscription Key</label>
-            <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)}
+            <input
+              id="settings-api-key"
+              name="apiKey"
+              type="password"
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
               placeholder="Insert api-subscription-key..."
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-cyber-cyan/30 transition-all" />
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-cyber-cyan/30 transition-all"
+            />
           </div>
           <button type="submit"
             className="w-full btn-glow text-white py-3 rounded-xl text-sm font-bold cursor-pointer transition-all flex items-center justify-center gap-2">
@@ -429,14 +448,14 @@ const Settings = ({
               <p className="text-sm font-bold text-white">Save Conversation History</p>
               <p className="text-xs text-white/35 font-medium">Store chat sessions locally in your browser</p>
             </div>
-            <Toggle value={saveHistory} onChange={setSaveHistory} />
+            <Toggle value={saveHistory} onChange={setSaveHistory} label="Toggle Save Conversation History" />
           </div>
           <div className="flex items-center justify-between glass-panel p-4 rounded-xl border border-white/5">
             <div>
               <p className="text-sm font-bold text-white">Send Usage Analytics</p>
               <p className="text-xs text-white/35 font-medium">Help improve Vani AI (anonymous, opt-in)</p>
             </div>
-            <Toggle value={analytics} onChange={setAnalytics} />
+            <Toggle value={analytics} onChange={setAnalytics} label="Toggle Send Usage Analytics" />
           </div>
         </div>
 

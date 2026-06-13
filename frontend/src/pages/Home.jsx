@@ -155,6 +155,7 @@ const Home = ({
             onClick={handleSilenceClick}
             className="w-11 h-11 sm:w-12 sm:h-12 rounded-full border border-red-500/20 bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center transition-all cursor-pointer hover:scale-105"
             title="Stop speaking"
+            aria-label="Stop speaking"
           >
             <VolumeX size={18} />
           </button>
@@ -167,6 +168,8 @@ const Home = ({
               ? 'bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20'
               : 'btn-glow text-white shadow-glow-neon'}
           `}
+          title={isRecording ? 'Stop recording' : 'Start recording'}
+          aria-label={isRecording ? 'Stop recording' : 'Start recording'}
         >
           {isRecording
             ? <MicOff size={24} className="animate-pulse" />
@@ -181,6 +184,8 @@ const Home = ({
           className="w-full relative flex items-center glass-panel border border-white/5 p-1.5 rounded-2xl shadow-glass focus-within:border-cyber-cyan/30 transition-all"
         >
           <input
+            id="home-message-input"
+            name="message"
             type="text"
             value={textInput}
             onChange={(e) => setTextInput(e.target.value)}
@@ -191,6 +196,8 @@ const Home = ({
             type="submit"
             disabled={!textInput.trim()}
             className="p-2.5 sm:p-3 bg-cyber-purple hover:bg-cyber-purple/80 disabled:opacity-40 text-white rounded-xl transition-all flex items-center justify-center cursor-pointer flex-shrink-0"
+            title="Send message"
+            aria-label="Send message"
           >
             <Send size={14} />
           </button>
