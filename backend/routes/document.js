@@ -112,4 +112,42 @@ router.post('/:id/convert', async (req, res) => {
   }
 });
 
+// Update document content (e.g., restore version)
+router.put('/:id', async (req, res) => {
+  try {
+    const { content, title } = req.body;
+    const documentId = req.params.id;
+
+    // Fetch existing document to create a backup version
+    const existing = await prisma.document.findUnique({
+      where: { id: documentId },
+      include: { versions: true }
+    });
+    if (!existing) return res.status(404).json({ error: 'Document not found' });
+
+    // Create a new version of the current content before updating
+    const nextVerNumber = (existing.versions?.length || 0) + 1;
+    await prisma.documentVersion.create({
+      data: {
+        documentId,
+        content: existing.content,
+        versionName: `v1.${nextVerNumber}`
+      }
+    });
+
+    // Update document content
+    const updated = await prisma.document.update({
+      where: { id: documentId },
+      data: {
+        content,
+        title: title || existing.title
+      }
+    });
+
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update document', details: error.message });
+  }
+});
+
 export default router;
