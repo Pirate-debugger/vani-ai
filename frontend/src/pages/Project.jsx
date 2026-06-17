@@ -26,25 +26,32 @@ const Project = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('documents'); // 'documents' or 'integrations'
 
-  useEffect(() => {
-    // Mocking for now
-    setTimeout(() => {
-      setProject({
-        id,
-        name: 'Swiggy for Villages',
-        status: 'active',
-        documents: [
-          { id: 'd1', type: 'brd', title: 'V1 BRD', content: '# Business Requirement Document\n\n## Executive Summary\n\nA platform to deliver food and agricultural supplies to rural villages.', updatedAt: new Date().toISOString() }
-        ]
-      });
+  const fetchProject = async () => {
+    try {
+      const res = await axios.get(`/api/projects/${id}`, { withCredentials: true });
+      setProject(res.data);
+    } catch (error) {
+      console.error("Failed to load project", error);
+    } finally {
       setLoading(false);
-    }, 500);
+    }
+  };
+
+  useEffect(() => {
+    fetchProject();
+  }, [id]);
+
+  // Expose a way to refresh the project (e.g., after generating a document)
+  useEffect(() => {
+    const handleDocumentCreated = () => fetchProject();
+    window.addEventListener('vani_document_created', handleDocumentCreated);
+    return () => window.removeEventListener('vani_document_created', handleDocumentCreated);
   }, [id]);
 
   if (loading) return <div className="p-8 text-white">Loading Project...</div>;
   if (!project) return <div className="p-8 text-white">Project not found</div>;
 
-  const selectedDoc = project.documents.find(d => d.id === selectedDocId) || project.documents[0];
+  const selectedDoc = (project.documents || []).find(d => d.id === selectedDocId) || (project.documents || [])[0];
 
   return (
     <div className="flex flex-col h-full bg-cyber-bg relative overflow-hidden">
@@ -93,12 +100,12 @@ const Project = () => {
               />
             </div>
             <div className="space-y-1">
-              {project.documents.filter(d => d.title.toLowerCase().includes(searchQuery.toLowerCase())).map(doc => (
+              {(project.documents || []).filter(d => d.title.toLowerCase().includes(searchQuery.toLowerCase())).map(doc => (
                 <button
                   key={doc.id}
                   onClick={() => setSelectedDocId(doc.id)}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm font-semibold transition-all ${
-                    (selectedDocId === doc.id || (!selectedDocId && project.documents[0]?.id === doc.id))
+                    (selectedDocId === doc.id || (!selectedDocId && (project.documents || [])[0]?.id === doc.id))
                       ? 'bg-cyber-cyan/10 text-cyber-cyan border border-cyber-cyan/20'
                       : 'text-white/60 hover:text-white hover:bg-white/5 border border-transparent'
                   }`}
@@ -106,7 +113,7 @@ const Project = () => {
                   {doc.title}
                 </button>
               ))}
-              {project.documents.length === 0 && <p className="text-xs text-white/30 p-2">No documents yet.</p>}
+              {(!project.documents || project.documents.length === 0) && <p className="text-xs text-white/30 p-2">No documents yet.</p>}
             </div>
           </div>
 

@@ -137,21 +137,35 @@ const Settings = ({
     fetch('/api/auth/status').then(r => r.json()).then(d => setApiStatus(d.source)).catch(() => {});
   }, []);
 
+  const [isVerifyingKey, setIsVerifyingKey] = useState(false);
+
   const handleSaveApiKey = async (e) => {
     e.preventDefault();
     if (!apiKey.trim()) return;
+    
+    setIsVerifyingKey(true);
+    
+    // Simulate live check delay
+    await new Promise(r => setTimeout(r, 1000));
+    
     try {
-      await fetch('/api/auth/set-key', {
+      const res = await fetch('/api/auth/set-key', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ key: apiKey })
       });
+      
+      if (!res.ok) throw new Error('Invalid key');
+      
       setApiStatus('session');
       showSaved('api');
       celebrate();
     } catch (err) {
       console.error('Failed to save API key:', err);
+      alert("Verification failed: Invalid API Key.");
+    } finally {
+      setIsVerifyingKey(false);
     }
   };
 
@@ -409,9 +423,12 @@ const Settings = ({
             />
           </div>
           <button type="submit"
-            className="w-full btn-glow text-white py-3 rounded-xl text-sm font-bold cursor-pointer transition-all flex items-center justify-center gap-2">
-            <Key size={15} />
-            Save & Activate Key
+            disabled={isVerifyingKey}
+            className={`w-full py-3 rounded-xl text-sm font-bold cursor-pointer transition-all flex items-center justify-center gap-2 ${
+              isVerifyingKey ? 'bg-cyber-cyan/20 text-cyber-cyan cursor-not-allowed' : 'btn-glow text-white'
+            }`}>
+            {isVerifyingKey ? <div className="w-4 h-4 border-2 border-cyber-cyan border-t-transparent rounded-full animate-spin" /> : <Key size={15} />}
+            {isVerifyingKey ? 'Verifying Key Live...' : 'Save & Activate Key'}
           </button>
         </form>
       </div>

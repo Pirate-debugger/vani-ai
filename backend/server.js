@@ -13,6 +13,7 @@ import aiRoutes from './routes/ai.js';
 import authRoutes from './routes/auth.js';
 import documentRoutes from './routes/document.js';
 import exportRoutes from './routes/export.js';
+import projectRoutes from './routes/project.js';
 
 dotenv.config();
 
@@ -109,6 +110,7 @@ app.use('/api/voice', voiceRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/document', documentRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/projects', projectRoutes);
 
 // Serve frontend build (production only — in dev, Vite runs separately)
 const publicDir = path.join(__dirname, 'public');

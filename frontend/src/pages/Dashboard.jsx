@@ -11,22 +11,33 @@ const Dashboard = () => {
   const { user } = useAuth();
 
   useEffect(() => {
-    // Mocking for now, will connect to backend API later
-    const fetchProjects = async () => {
-      try {
-        // const res = await axios.get('/api/projects', { withCredentials: true });
-        // setProjects(res.data);
-        setProjects([
-          { id: '1', name: 'Swiggy for Villages', status: 'active', documents: [{ id: 'd1', type: 'brd', title: 'Initial BRD' }] }
-        ]);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchProjects();
   }, []);
+
+  const fetchProjects = async () => {
+    try {
+      const res = await axios.get('/api/projects', { withCredentials: true });
+      setProjects(res.data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateProject = async () => {
+    const name = window.prompt("Enter new project name:", "My Awesome Startup");
+    if (!name) return;
+
+    try {
+      const res = await axios.post('/api/projects', { name }, { withCredentials: true });
+      setProjects([res.data, ...projects]);
+      navigate(`/project/${res.data.id}`);
+    } catch (error) {
+      console.error("Failed to create project", error);
+      alert("Failed to create project");
+    }
+  };
 
   if (loading) {
     return <div className="p-8 text-white">Loading projects...</div>;
@@ -39,7 +50,7 @@ const Dashboard = () => {
           <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-cyber-cyan bg-clip-text text-transparent">Dashboard</h1>
           <p className="text-white/50 text-sm mt-1">Welcome back, {user?.name || 'User'}</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-cyber-cyan text-cyber-bg font-bold rounded-lg hover:bg-cyber-cyan/90 transition-all">
+        <button onClick={handleCreateProject} className="flex items-center gap-2 px-4 py-2 bg-cyber-cyan text-cyber-bg font-bold rounded-lg hover:bg-cyber-cyan/90 transition-all">
           <Plus size={18} />
           New Project
         </button>
@@ -51,7 +62,7 @@ const Dashboard = () => {
             <Folder size={48} className="text-white/20 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-white">No projects yet</h3>
             <p className="text-sm text-white/40 mt-1 mb-4">Create your first product intelligence project.</p>
-            <button className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white font-semibold rounded-lg border border-white/10 transition-all">
+            <button onClick={handleCreateProject} className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white font-semibold rounded-lg border border-white/10 transition-all">
               Create Project
             </button>
           </div>
@@ -66,12 +77,12 @@ const Dashboard = () => {
               </div>
               <div className="space-y-2 mt-4">
                 <p className="text-xs text-white/50 font-semibold uppercase tracking-wider mb-2">Recent Documents</p>
-                {proj.documents?.map(doc => (
+                {proj.documents && proj.documents.length > 0 ? proj.documents.map(doc => (
                   <div key={doc.id} className="flex items-center gap-2 text-sm text-white/70">
                     <FileText size={14} className="text-cyber-purple" />
                     <span className="flex-1 truncate">{doc.title} ({doc.type.toUpperCase()})</span>
                   </div>
-                ))}
+                )) : <p className="text-xs text-white/30">No documents generated yet</p>}
               </div>
               <div className="mt-5 pt-4 border-t border-white/5 flex items-center justify-between text-xs font-semibold text-white/40 group-hover:text-cyber-cyan/80 transition-colors">
                 <span>View Workspace</span>
