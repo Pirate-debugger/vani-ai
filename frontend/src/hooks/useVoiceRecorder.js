@@ -91,6 +91,27 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     }
   }, [languageCode]);
 
+  const startSpeechRecognition = useCallback(() => {
+    if (recognitionRef.current) {
+      try {
+        transcriptRef.current = '';
+        setTranscript('');
+        setLiveTranscript('');
+        recognitionRef.current.start();
+      } catch (e) {
+        console.warn('Speech recognition already started or failed to start:', e);
+      }
+    }
+  }, []);
+
+  const stopSpeechRecognition = useCallback(() => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+    }
+  }, []);
+
   // ─── Backend STT fallback ─────────────────────────────────────────────────────
   const submitAudioToSTT = useCallback(async (blob, mimeType) => {
     if (!blob || blob.size < 1000) return null;
@@ -314,6 +335,7 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     onToken,
     onTTSSentence,
     onDone,
+    signal, // Add AbortSignal for interruptions
   }) => {
     clearTTSQueue();
     cancelSpeech();
@@ -323,7 +345,8 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ messages, language_code: langCode })
+        body: JSON.stringify({ messages, language_code: langCode }),
+        signal, // Pass the signal to fetch
       });
 
       if (!response.ok) throw new Error(`Stream failed: ${response.status}`);
@@ -359,7 +382,7 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
       if (onDone) onDone();
     } catch (err) {
       console.error('[streamAndSpeak] Error:', err);
-      if (onDone) onDone();
+      if (err.name !== 'AbortError' && onDone) onDone();
     }
   }, [clearTTSQueue, playNextInQueue]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -370,13 +393,18 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     if (!blob) return;
     const mimeType = 'audio/wav';
     setAudioMimeType(mimeType);
-    let finalTranscript = '';
-    const sttResult = await submitAudioToSTT(blob, mimeType);
-    if (sttResult) {
-      finalTranscript = sttResult;
-      transcriptRef.current = sttResult;
-      setTranscript(sttResult);
+    let finalTranscript = transcriptRef.current.trim();
+    
+    // Only call backend STT if the browser's native STT didn't capture anything
+    if (!finalTranscript) {
+      const sttResult = await submitAudioToSTT(blob, mimeType);
+      if (sttResult) {
+        finalTranscript = sttResult;
+        transcriptRef.current = sttResult;
+        setTranscript(sttResult);
+      }
     }
+    
     setAudioBlob(blob);
     if (transcriptPromiseRef.current) {
       transcriptPromiseRef.current.resolve(finalTranscript);
@@ -399,7 +427,7 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
           transcriptPromiseRef.current.reject(new Error('Timeout waiting for transcript'));
           transcriptPromiseRef.current = null;
         }
-      }, 3000);
+      }, 5000); // Increased timeout to 5 seconds to match VAD 3-5s timeout
     });
   }, []);
 
@@ -422,6 +450,8 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     clearTTSQueue,
     setExternalAudioBlob,
     waitForTranscript,
+    startSpeechRecognition,
+    stopSpeechRecognition,
     // Exports for testing
     getSupportedMimeType,
     submitAudioToSTT,

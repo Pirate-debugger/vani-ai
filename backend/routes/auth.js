@@ -4,6 +4,7 @@ import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import bcrypt from 'bcryptjs';
 import prisma from '../lib/prisma.js';
 import { encryptKey } from '../lib/crypto.js';
+import crypto from 'node:crypto';
 
 const router = express.Router();
 
@@ -16,7 +17,8 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:5000/api/auth/google/callback',
+      callbackURL: process.env.GOOGLE_CALLBACK_URL || '/api/auth/google/callback',
+      proxy: true
     },
     async (accessToken, refreshToken, profile, done) => {
       const user = {
@@ -48,12 +50,19 @@ router.get('/google',
 
 // GET /api/auth/google/callback
 router.get('/google/callback',
-  passport.authenticate('google', {
-    failureRedirect: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/?error=auth_failed`,
-    session: true
-  }),
+  (req, res, next) => {
+    const frontendUrl = process.env.VERCEL ? '/' : (process.env.FRONTEND_URL || 'http://localhost:5173');
+    req.frontendUrl = frontendUrl;
+    next();
+  },
+  (req, res, next) => {
+    passport.authenticate('google', {
+      failureRedirect: `${req.frontendUrl}?error=auth_failed`,
+      session: true
+    })(req, res, next);
+  },
   (req, res) => {
-    res.redirect(process.env.FRONTEND_URL || 'http://localhost:3000');
+    res.redirect(req.frontendUrl);
   }
 );
 
@@ -248,6 +257,77 @@ router.get('/status', async (req, res) => {
     user: user || null,
     googleConfigured: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
   });
+});
+
+// ─── Password Reset ─────────────────────────────────────────────────────────
+
+// POST /api/auth/forgot-password
+router.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    // Return generic success to prevent email enumeration
+    return res.json({ message: 'If an account with that email exists, a reset link has been sent.' });
+  }
+
+  // Generate a random token
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+  const expiry = new Date(Date.now() + 3600000); // 1 hour
+
+  await prisma.user.update({
+    where: { email },
+    data: {
+      resetToken: hashedToken,
+      resetTokenExpiry: expiry
+    }
+  });
+
+  const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}&email=${email}`;
+  
+  // Since there's no email service configured, we log it to the server console for now
+  console.log('===================================================');
+  console.log('PASSWORD RESET LINK REQUESTED:');
+  console.log(resetUrl);
+  console.log('===================================================');
+
+  res.json({ message: 'If an account with that email exists, a reset link has been sent.' });
+});
+
+// POST /api/auth/reset-password
+router.post('/reset-password', async (req, res) => {
+  const { token, email, newPassword } = req.body;
+  if (!token || !email || !newPassword) return res.status(400).json({ error: 'Missing required fields' });
+  if (newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+
+  const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+  
+  const user = await prisma.user.findFirst({
+    where: {
+      email,
+      resetToken: hashedToken,
+      resetTokenExpiry: { gt: new Date() }
+    }
+  });
+
+  if (!user) {
+    return res.status(400).json({ error: 'Invalid or expired reset token' });
+  }
+
+  const newPasswordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+
+  await prisma.user.update({
+    where: { email },
+    data: {
+      passwordHash: newPasswordHash,
+      resetToken: null,
+      resetTokenExpiry: null
+    }
+  });
+
+  res.json({ message: 'Password has been successfully reset' });
 });
 
 export default router;

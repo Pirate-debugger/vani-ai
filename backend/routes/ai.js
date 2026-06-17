@@ -3,6 +3,7 @@ import prisma from '../lib/prisma.js';
 import { decryptKey } from '../lib/crypto.js';
 import { getAIResponse } from '../services/llm.js';
 import { streamAIResponse } from '../services/llm-stream.js';
+import { runAgentWorkflow, identifyAgentIntent } from '../services/agentService.js';
 
 const router = express.Router();
 
@@ -43,16 +44,40 @@ router.post('/chat', async (req, res, next) => {
       return res.status(400).json({ error: 'Prompt too long. Please keep it under 4000 characters.' });
     }
 
-    const response = await getAIResponse({
-      messages,
-      prompt: userPrompt,
-      langCode: language_code || 'hi-IN',
-      personality,
-      profile,
+    let response;
+    
+    const apiKeys = {
       sarvamKey: await getSarvamKey(req),
       openaiKey: process.env.OPENAI_API_KEY,
       geminiKey: process.env.GEMINI_API_KEY
-    });
+    };
+
+    let targetAgentType = req.body.agentType;
+
+    // If no explicit agent is requested, let the Router decide
+    if (!targetAgentType) {
+      targetAgentType = await identifyAgentIntent(userPrompt, apiKeys);
+      console.log(`[Agent Router] Classified intent as: ${targetAgentType}`);
+    }
+
+    if (targetAgentType && targetAgentType !== 'general') {
+      response = await runAgentWorkflow(
+        req.body.projectId, 
+        targetAgentType, 
+        userPrompt, 
+        messages, 
+        apiKeys
+      );
+    } else {
+      response = await getAIResponse({
+        messages,
+        prompt: userPrompt,
+        langCode: language_code || 'hi-IN',
+        personality,
+        profile,
+        ...apiKeys
+      });
+    }
 
     return res.json(response);
   } catch (error) {

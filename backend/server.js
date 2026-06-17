@@ -11,6 +11,8 @@ import rateLimit from 'express-rate-limit';
 import voiceRoutes from './routes/voice.js';
 import aiRoutes from './routes/ai.js';
 import authRoutes from './routes/auth.js';
+import documentRoutes from './routes/document.js';
+import exportRoutes from './routes/export.js';
 
 dotenv.config();
 
@@ -39,10 +41,10 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      connectSrc: ["'self'", "https://api.sarvam.ai", "https://api.openai.com", "https://generativelanguage.googleapis.com"],
+      connectSrc: ["'self'", "https://api.sarvam.ai", "https://api.openai.com", "https://generativelanguage.googleapis.com", "https://cdn.jsdelivr.net"],
       mediaSrc: ["'self'", "blob:"],
       workerSrc: ["'self'", "blob:"],
-      scriptSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-eval'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       frameAncestors: ["'self'"],
     }
@@ -67,17 +69,8 @@ const limiter = rateLimit({
 app.use('/api/', limiter);
 
 // CORS — allow frontend origins with credentials
-const allowedOrigins = (process.env.ALLOWED_ORIGIN || 'http://localhost:3000,http://localhost:5173').split(',');
 app.use(cors({
-  origin: (origin, callback) => {
-    const normalizeOrigin = (o) => { try { return new URL(o.trim()).origin; } catch { return o.trim(); } };
-    const normalizedAllowed = allowedOrigins.map(normalizeOrigin);
-    if (!origin || normalizedAllowed.includes(normalizeOrigin(origin))) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'api-subscription-key']
@@ -114,6 +107,8 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/voice', voiceRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/document', documentRoutes);
+app.use('/api/export', exportRoutes);
 
 // Serve frontend build (production only — in dev, Vite runs separately)
 const publicDir = path.join(__dirname, 'public');

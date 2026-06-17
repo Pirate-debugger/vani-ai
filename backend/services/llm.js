@@ -2,13 +2,42 @@ import axios from 'axios';
 import { OpenAI } from 'openai';
 import { getSimulatorResponse } from '../data/simulator-responses.js';
 
-export const callSarvamLLM = async (messages, langCode, apiKey) => {
+const getSystemPrompt = (persona, langCode, profileContext) => {
+  const base = `You are Vani AI, an advanced multilingual AI assistant for India. Respond in the language code: "${langCode}". Keep replies highly concise for voice output (max 3-4 sentences). ${profileContext}. If you detect a strong emotion in the user's prompt (like happy, sad, angry, stressed), end your response with an emotion tag like [EMOTION: stressed] or [EMOTION: happy]. Otherwise do not include the tag.`;
+  
+  switch(persona) {
+    case 'tutor':
+      return `${base} You are a Student Tutor. Explain educational concepts simply. Generate quizzes and MCQs if asked. Focus on clarity.`;
+    case 'government':
+      return `${base} You are a Government Scheme Expert. Guide users on PM-Kisan, Ayushman Bharat, Mudra loans, eligibility, and required documents.`;
+    case 'interview':
+      return `${base} You are an Interview Coach. Conduct mock HR or Technical interviews. Ask one question at a time. Rate answers and provide constructive feedback.`;
+    case 'career':
+      return `${base} You are a Career Mentor. Provide career roadmaps, learning paths, and guidance for BCA, MCA, Engineering, and other students.`;
+    case 'demo':
+      return `You are Vani AI presenting yourself at a Hackathon. Explain your Problem statement (language barrier in India), Solution (voice-first multilingual platform), Tech stack (React, Node, Sarvam API, Gemini), Impact, and Future scope. Keep it under 5 sentences, enthusiastic and concise for voice output in ${langCode}.`;
+    case 'rural':
+      return `${base} You are a Rural Business Advisor. Guide farmers, shopkeepers, and rural businesses with agriculture tips, weather, and marketing.`;
+    case 'document_agent':
+      return `You are Vani AI, functioning as a specialized Document Generator Agent. Produce highly professional, structured, and detailed content.`;
+    default:
+      return `${base} You are a helpful, respectful, and friendly digital assistant.`;
+  }
+};
+
+export const callSarvamLLM = async (messages, prompt, langCode, persona, profileContext, apiKey) => {
+  const systemPrompt = getSystemPrompt(persona, langCode, profileContext);
+  const apiMessages = [
+    { role: 'system', content: systemPrompt },
+    ...(messages || [{ role: 'user', content: prompt }])
+  ];
+
   let response;
   try {
     console.log(`[LLM Sarvam] Trying sarvam-105b...`);
     response = await axios.post('https://api.sarvam.ai/v1/chat/completions', {
       model: 'sarvam-105b',
-      messages: messages,
+      messages: apiMessages,
       temperature: 0.7,
       reasoning_effort: null,
       max_tokens: 300
@@ -23,7 +52,7 @@ export const callSarvamLLM = async (messages, langCode, apiKey) => {
     console.warn('Sarvam 105b failed, trying sarvam-30b...', err1.message);
     response = await axios.post('https://api.sarvam.ai/v1/chat/completions', {
       model: 'sarvam-30b',
-      messages: messages,
+      messages: apiMessages,
       temperature: 0.7,
       reasoning_effort: null,
       max_tokens: 300
@@ -48,7 +77,7 @@ export const callSarvamLLM = async (messages, langCode, apiKey) => {
 
 export const callOpenAILLM = async (messages, prompt, langCode, personality, profileContext, apiKey) => {
   const openai = new OpenAI({ apiKey });
-  const systemPrompt = `You are Vani AI, a highly supportive, respectful, and multilingual AI assistant for Indian users. ${profileContext} Respond in a friendly tone using the language code "${langCode}". Current personality mode: "${personality}". Keep replies concise and easy to understand for voice output (max 4 sentences).`;
+  const systemPrompt = getSystemPrompt(personality, langCode, profileContext);
   
   const apiMessages = [
     { role: 'system', content: systemPrompt },
@@ -69,13 +98,13 @@ export const callOpenAILLM = async (messages, prompt, langCode, personality, pro
   };
 };
 
-export const callGeminiLLM = async (prompt, langCode, apiKey) => {
+export const callGeminiLLM = async (messages, prompt, langCode, personality, profileContext, apiKey) => {
+  const systemPrompt = getSystemPrompt(personality, langCode, profileContext);
   const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    system_instruction: { parts: [{ text: systemPrompt }] },
     contents: [{
       parts: [{
-        text: `You are Vani AI, a multilingual voice-first digital assistant for Indian users.
-Please reply to this prompt: "${prompt}" in the language of this code "${langCode}".
-Make it friendly, respectful, and highly concise for a voice speaker (maximum 3-4 lines).`
+        text: prompt
       }]
     }]
   });
@@ -98,33 +127,50 @@ export const getAIResponse = async ({ messages, prompt, langCode, personality, p
     ? `User profile: State=${profile.state || 'unknown'}, Occupation=${profile.occupation || 'unknown'}, Age group=${profile.age || 'unknown'}. Personalize your responses accordingly.`
     : '';
 
+  let rawResponse;
+
   if (sarvamKey) {
     console.log(`[LLM Sarvam] Generating completion for: "${userPrompt.substring(0, 30)}..."`);
     try {
-      return await callSarvamLLM(messages || [{ role: 'user', content: userPrompt }], langCode, sarvamKey);
+      rawResponse = await callSarvamLLM(messages, userPrompt, langCode, character, profileContext, sarvamKey);
     } catch (err) {
       console.warn('Sarvam LLM failed, checking other keys...', err.message);
     }
   }
 
-  if (openaiKey) {
+  if (!rawResponse && openaiKey) {
     console.log(`[LLM OpenAI] Generating completion...`);
     try {
-      return await callOpenAILLM(messages, userPrompt, langCode, character, profileContext, openaiKey);
+      rawResponse = await callOpenAILLM(messages, userPrompt, langCode, character, profileContext, openaiKey);
     } catch (err) {
       console.warn('OpenAI API failed, checking other keys...', err.message);
     }
   }
 
-  if (geminiKey) {
+  if (!rawResponse && geminiKey) {
     console.log(`[LLM Gemini] Generating completion via Gemini 2.5 Flash API...`);
     try {
-      return await callGeminiLLM(userPrompt, langCode, geminiKey);
+      rawResponse = await callGeminiLLM(messages, userPrompt, langCode, character, profileContext, geminiKey);
     } catch (err) {
       console.warn('Gemini API failed, falling back to simulator...', err.message);
     }
   }
 
-  console.log(`[LLM Simulator] Processing localized Indian request in: ${langCode}`);
-  return await getSimulatorResponse(userPrompt, langCode, character);
+  if (!rawResponse) {
+    console.log(`[LLM Simulator] Processing localized Indian request in: ${langCode}`);
+    rawResponse = await getSimulatorResponse(userPrompt, langCode, character);
+  }
+
+  // Parse Emotion
+  let emotion = null;
+  if (rawResponse.response) {
+    const emotionMatch = rawResponse.response.match(/\[EMOTION:\s*([a-zA-Z]+)\]/i);
+    if (emotionMatch) {
+      emotion = emotionMatch[1].toLowerCase();
+      rawResponse.response = rawResponse.response.replace(/\[EMOTION:\s*[a-zA-Z]+\]/gi, '').trim();
+    }
+  }
+  
+  rawResponse.emotion = emotion;
+  return rawResponse;
 };

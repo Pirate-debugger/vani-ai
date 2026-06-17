@@ -8,9 +8,13 @@ import Chat from './pages/Chat';
 import Assistant from './pages/Assistant';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
+import WhyVani from './pages/WhyVani';
+import Dashboard from './pages/Dashboard';
+import Project from './pages/Project';
 import MicPermissionModal from './components/MicPermissionModal';
 import { useVoiceRecorder } from './hooks/useVoiceRecorder';
 import { Sparkles, X } from 'lucide-react';
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 
 // Simulator Mode Banner
 const SimulatorBanner = () => (
@@ -35,8 +39,16 @@ const OfflineBanner = ({ onDismiss }) => (
 const AppInner = () => {
   const { user, setUser, authLoading: loading, logout } = useAuth();
   const chatHistory = useChatHistory();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const [activeTab, setActiveTab]         = useState('home');
+  // Determine active tab from path for sidebar highlighting
+  const activeTab = location.pathname.startsWith('/dashboard') ? 'dashboard' 
+                  : location.pathname.startsWith('/chat') ? 'chat'
+                  : location.pathname.startsWith('/assistant') ? 'assistant'
+                  : location.pathname.startsWith('/settings') ? 'settings'
+                  : location.pathname.startsWith('/why-vani') ? 'why-vani'
+                  : 'home';
   const [currentLang, setCurrentLang]     = useState('hi-IN');
   const [personality, setPersonality]     = useState('respectful');
   const [voiceSpeed, setVoiceSpeed]       = useState(1.0);
@@ -46,6 +58,7 @@ const AppInner = () => {
   const [micPrompted, setMicPrompted]     = useState(() => localStorage.getItem('vani_mic_prompted') === 'true');
   const [backendOffline, setBackendOffline] = useState(false);
   const [dismissOffline, setDismissOffline] = useState(false);
+  const [accessibilityMode, setAccessibilityMode] = useState(() => localStorage.getItem('vani_accessibility') === 'true');
 
   const voiceRecorder = useVoiceRecorder(currentLang);
 
@@ -59,7 +72,7 @@ const AppInner = () => {
   const handleLoadSession = useCallback((sessionMessages, sessionLang, newSessionId) => {
     setMessages(sessionMessages || []);
     if (sessionLang) setCurrentLang(sessionLang);
-    setActiveTab('chat');
+    navigate('/chat');
     if (newSessionId && chatHistory.isLoggedIn) chatHistory.setCurrentSessionId(newSessionId);
   }, [chatHistory]);
 
@@ -160,7 +173,7 @@ const AppInner = () => {
   // ─── Loading screen ────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-[#04020A]">
+      <div className="h-[100dvh] w-screen flex items-center justify-center bg-[#04020A]">
         <div className="cyber-bg" />
         <div className="flex flex-col items-center gap-4 z-10">
           <Sparkles size={32} className="text-cyber-cyan animate-spin" />
@@ -176,7 +189,7 @@ const AppInner = () => {
   }
 
   return (
-    <div className="flex flex-col md:flex-row h-screen w-screen bg-cyber-bg overflow-hidden text-cyber-text select-none font-sans relative">
+    <div className="flex flex-col md:flex-row h-[100dvh] w-screen bg-cyber-bg overflow-hidden text-cyber-text select-none font-sans relative">
       <div className="cyber-bg" />
 
       {/* Mic permission modal — outside overflow-hidden so it overlays correctly */}
@@ -190,6 +203,7 @@ const AppInner = () => {
         onNewChat={handleLoadSession}
         user={user}
         logout={logout}
+        accessibilityMode={accessibilityMode}
       />
 
       {/* Main content — pb-16 on mobile for bottom nav bar */}
@@ -197,50 +211,66 @@ const AppInner = () => {
         {backendOffline && !dismissOffline && <OfflineBanner onDismiss={() => setDismissOffline(true)} />}
         {isSimulatorMode && <SimulatorBanner />}
 
-        {activeTab === 'home' && (
-          <Home
-            currentLang={currentLang}
-            personality={personality}
-            voiceSpeed={voiceSpeed}
-            voiceRecorder={voiceRecorder}
-            messages={messages}
-            setMessages={setMessages}
-            onSubmitPrompt={onSubmitPrompt}
-            isSimulatorMode={isSimulatorMode}
-          />
-        )}
-        {activeTab === 'chat' && (
-          <Chat
-            currentLang={currentLang}
-            voiceSpeed={voiceSpeed}
-            voiceRecorder={voiceRecorder}
-            messages={messages}
-            setMessages={setMessages}
-            onSubmitPrompt={onSubmitPrompt}
-            autoSpeak={getAutoSpeak()}
-          />
-        )}
-        {activeTab === 'assistant' && (
-          <Assistant
-            currentLang={currentLang}
-            voiceSpeed={voiceSpeed}
-            voiceRecorder={voiceRecorder}
-            onSubmitPrompt={onSubmitPrompt}
-            onEndSession={() => setActiveTab('home')}
-          />
-        )}
-        {activeTab === 'settings' && (
-          <Settings
-            currentLang={currentLang}
-            setCurrentLang={setCurrentLang}
-            personality={personality}
-            setPersonality={setPersonality}
-            voiceSpeed={voiceSpeed}
-            setVoiceSpeed={setVoiceSpeed}
-            apiKey={apiKey}
-            setApiKey={setApiKey}
-          />
-        )}
+        <Routes>
+          <Route path="/" element={<Navigate to="/home" />} />
+          <Route path="/home" element={
+            <Home
+              currentLang={currentLang}
+              personality={personality}
+              voiceSpeed={voiceSpeed}
+              voiceRecorder={voiceRecorder}
+              messages={messages}
+              setMessages={setMessages}
+              onSubmitPrompt={onSubmitPrompt}
+              isSimulatorMode={isSimulatorMode}
+              accessibilityMode={accessibilityMode}
+              setActiveTab={(tab) => navigate(`/${tab}`)}
+              setPersonality={setPersonality}
+            />
+          } />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/project/:id" element={<Project />} />
+          <Route path="/chat" element={
+            <Chat
+              currentLang={currentLang}
+              voiceSpeed={voiceSpeed}
+              voiceRecorder={voiceRecorder}
+              messages={messages}
+              setMessages={setMessages}
+              onSubmitPrompt={onSubmitPrompt}
+              autoSpeak={getAutoSpeak()}
+              accessibilityMode={accessibilityMode}
+            />
+          } />
+          <Route path="/assistant" element={
+            <Assistant
+              currentLang={currentLang}
+              setCurrentLang={setCurrentLang}
+              voiceSpeed={voiceSpeed}
+              voiceRecorder={voiceRecorder}
+              onSubmitPrompt={onSubmitPrompt}
+              onEndSession={() => navigate('/home')}
+              accessibilityMode={accessibilityMode}
+            />
+          } />
+          <Route path="/settings" element={
+            <Settings
+              currentLang={currentLang}
+              setCurrentLang={setCurrentLang}
+              personality={personality}
+              setPersonality={setPersonality}
+              voiceSpeed={voiceSpeed}
+              setVoiceSpeed={setVoiceSpeed}
+              apiKey={apiKey}
+              setApiKey={setApiKey}
+              accessibilityMode={accessibilityMode}
+              setAccessibilityMode={setAccessibilityMode}
+            />
+          } />
+          <Route path="/why-vani" element={
+            <WhyVani setActiveTab={(tab) => navigate(`/${tab}`)} accessibilityMode={accessibilityMode} />
+          } />
+        </Routes>
       </main>
     </div>
   );

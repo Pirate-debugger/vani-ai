@@ -1,7 +1,7 @@
 import React from 'react';
 import { Home, Landmark, Briefcase, HelpCircle, ArrowRight } from 'lucide-react';
 
-const SuggestionCards = ({ onSelect, currentLang }) => {
+const SuggestionCards = ({ onSelect, currentLang, accessibilityMode }) => {
   const cards = [
     {
       id: 'pg',
@@ -98,6 +98,54 @@ const SuggestionCards = ({ onSelect, currentLang }) => {
       },
       color: 'from-cyber-purple/20 to-pink-500/20',
       badge: '💬 AI Brain'
+    },
+    {
+      id: 'agriculture',
+      icon: Home, // using Home as fallback, wait I can use a generic icon or something else
+      title: {
+        'hi-IN': 'किसानों के लिए सब्सिडी',
+        'en-IN': 'Crop Subsidies & Tips',
+        'mr-IN': 'शेतकरी आणि शेती',
+        'ta-IN': 'விவசாய மானியங்கள்'
+      },
+      desc: {
+        'hi-IN': 'वर्तमान फसल सब्सिडी, मौसम अपडेट और मंडी भाव जानें।',
+        'en-IN': 'Learn about current crop subsidies, weather, and Mandi rates.',
+        'mr-IN': 'चालू पीक अनुदान, हवामान आणि बाजारभाव माहिती मिळवा.',
+        'ta-IN': 'தற்போதைய பயிர் மானியங்கள் மற்றும் வானிலை.'
+      },
+      prompt: {
+        'hi-IN': 'वर्तमान फसल सब्सिडी क्या हैं?',
+        'en-IN': 'What are the current crop subsidies?',
+        'mr-IN': 'सध्याचे पीक अनुदान काय आहेत?',
+        'ta-IN': 'தற்போதைய பயிர் மானியங்கள் என்ன?'
+      },
+      color: 'from-green-500/20 to-emerald-500/20',
+      badge: '🌾 Agriculture'
+    },
+    {
+      id: 'citizen',
+      icon: Landmark,
+      title: {
+        'hi-IN': 'नागरिक सेवाएं',
+        'en-IN': 'Citizen Services',
+        'mr-IN': 'नागरी सेवा',
+        'ta-IN': 'குடிமக்கள் சேவைகள்'
+      },
+      desc: {
+        'hi-IN': 'आधार अपडेट, पैन कार्ड, और पासपोर्ट के लिए आवेदन कैसे करें।',
+        'en-IN': 'How to apply for Aadhar update, PAN card, and Passport.',
+        'mr-IN': 'आधार अपडेट आणि पॅन कार्डसाठी अर्ज कसा करावा.',
+        'ta-IN': 'ஆதார் திருத்தம் மற்றும் பான் கார்டு.'
+      },
+      prompt: {
+        'hi-IN': 'मैं आधार कार्ड अपडेट के लिए कैसे आवेदन करूं?',
+        'en-IN': 'How do I apply for an Aadhar card update?',
+        'mr-IN': 'मी आधार कार्ड अपडेटसाठी कसा अर्ज करू?',
+        'ta-IN': 'ஆதார் அட்டை திருத்தத்திற்கு நான் எவ்வாறு விண்ணப்பிப்பது?'
+      },
+      color: 'from-orange-500/20 to-red-500/20',
+      badge: '🇮🇳 e-Governance'
     }
   ];
 
@@ -113,27 +161,30 @@ const SuggestionCards = ({ onSelect, currentLang }) => {
           <button
             key={card.id}
             onClick={() => onSelect(cardPrompt)}
-            className="flex flex-col text-left glass-panel glass-panel-hover p-6 rounded-2xl group border border-white/5 relative overflow-hidden transition-all duration-300"
+            className="group relative h-full w-full overflow-hidden rounded-2xl border border-white/5 transition-all duration-300 hover:border-white/10"
           >
-            {/* Background Glow Mesh overlay */}
-            <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${card.color} opacity-40 blur-xl group-hover:scale-125 transition-transform duration-300 z-0`} />
-            
-            {/* Upper Badge */}
-            <span className="text-[10px] uppercase font-bold tracking-widest text-cyber-cyan mb-4 z-10">{card.badge}</span>
-            
-            {/* Icon Wrapper */}
-            <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center mb-4 border border-white/10 group-hover:border-cyber-cyan/30 transition-all z-10">
-              <Icon size={22} className="text-white group-hover:text-cyber-cyan transition-colors" />
-            </div>
-            
-            {/* Details */}
-            <h3 className="font-extrabold text-base text-white group-hover:text-cyber-cyan transition-colors mb-2 z-10 leading-tight">{cardTitle}</h3>
-            <p className="text-xs text-white/50 leading-relaxed font-medium mb-6 z-10 flex-1">{cardDesc}</p>
-            
-            {/* Quick Action arrow */}
-            <div className="flex items-center gap-1.5 text-xs font-bold text-white/40 group-hover:text-cyber-cyan transition-colors z-10">
-              <span>Ask Vani</span>
-              <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+            <div className={`p-4 sm:p-5 h-full flex flex-col items-start text-left justify-between bg-gradient-to-br ${card.color} rounded-2xl group-hover:opacity-100 opacity-90 transition-opacity`}>
+              <div className="w-full">
+                <div className="flex items-center justify-between mb-3 w-full">
+                  <span className={`${accessibilityMode ? 'text-[11px] sm:text-xs' : 'text-[9px] sm:text-[10px]'} font-extrabold tracking-widest uppercase text-white/50 bg-black/20 px-2 py-0.5 rounded-full`}>
+                    {card.badge}
+                  </span>
+                  <div className="bg-white/10 p-1.5 rounded-lg text-white/70">
+                    <Icon size={accessibilityMode ? 20 : 16} />
+                  </div>
+                </div>
+                <h3 className={`${accessibilityMode ? 'text-lg sm:text-xl mb-3' : 'text-sm sm:text-base mb-1.5'} font-bold text-white/95 leading-snug group-hover:text-cyber-cyan transition-colors`}>
+                  {cardTitle}
+                </h3>
+                <p className={`${accessibilityMode ? 'text-sm sm:text-base' : 'text-[11px] sm:text-xs'} text-white/50 font-medium leading-relaxed line-clamp-2`}>
+                  {cardDesc}
+                </p>
+              </div>
+              
+              <div className={`mt-4 w-full flex items-center justify-between ${accessibilityMode ? 'text-sm' : 'text-[10px]'} font-bold text-cyber-cyan opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0`}>
+                <span>Ask Vani</span>
+                <ArrowRight size={accessibilityMode ? 16 : 12} />
+              </div>
             </div>
           </button>
         );

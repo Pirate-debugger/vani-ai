@@ -293,6 +293,11 @@ const Chat = ({
                             <span className="text-cyber-cyan/70 font-bold bg-cyber-cyan/5 px-1.5 py-0.5 rounded border border-cyber-cyan/10">
                               {getModelBadge(msg)}
                             </span>
+                            {msg.emotion && (
+                              <span className="text-pink-400 font-bold bg-pink-500/10 px-1.5 py-0.5 rounded border border-pink-500/20 capitalize">
+                                {msg.emotion}
+                              </span>
+                            )}
                             <button
                               onClick={() => handleReplay(msg.content)}
                               className="p-1 hover:text-cyber-cyan transition-colors cursor-pointer flex items-center gap-0.5"

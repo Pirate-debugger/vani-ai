@@ -5,16 +5,26 @@ import VoiceOrb from '../components/VoiceOrb';
 const LANGUAGES = [
   { code: 'hi-IN', label: 'हिन्दी' },
   { code: 'en-IN', label: 'English' },
-  { code: 'mr-IN', label: 'मराठी' },
-  { code: 'ta-IN', label: 'தமிழ்' },
-  { code: 'te-IN', label: 'తెలుగు' },
+  { code: 'as-IN', label: 'অসমীয়া' },
   { code: 'bn-IN', label: 'বাংলা' },
+  { code: 'brx-IN', label: 'बड़ो' },
+  { code: 'doi-IN', label: 'डोगरी' },
   { code: 'gu-IN', label: 'ગુજરાતી' },
   { code: 'kn-IN', label: 'ಕನ್ನಡ' },
+  { code: 'ks-IN', label: 'कॉशुर' },
+  { code: 'kok-IN', label: 'कोंकणी' },
+  { code: 'mai-IN', label: 'मैथिली' },
   { code: 'ml-IN', label: 'മലയാളം' },
+  { code: 'mni-IN', label: 'ꯃꯤꯇꯩꯂꯣꯟ' },
+  { code: 'mr-IN', label: 'मराठी' },
+  { code: 'ne-IN', label: 'नेपाली' },
   { code: 'or-IN', label: 'ଓଡ଼ିଆ' },
   { code: 'pa-IN', label: 'ਪੰਜਾਬੀ' },
-  { code: 'as-IN', label: 'অসমীয়া' },
+  { code: 'sa-IN', label: 'संस्कृत' },
+  { code: 'sat-IN', label: 'ᱥᱟᱱᱛᱟᱲᱤ' },
+  { code: 'sd-IN', label: 'सिन्धी' },
+  { code: 'ta-IN', label: 'தமிழ்' },
+  { code: 'te-IN', label: 'తెలుగు' },
   { code: 'ur-IN', label: 'اردو' },
 ];
 
@@ -42,24 +52,50 @@ function float32ToWav(float32Array, sampleRate = 16000) {
 
 const Assistant = ({ 
   currentLang, 
+  setCurrentLang,
   voiceSpeed,
   voiceRecorder, 
   onSubmitPrompt,
-  onEndSession
+  onEndSession,
+  accessibilityMode 
 }) => {
-  const [sessionStatus, setSessionStatus] = useState('Voice Session Active');
+  const [sessionStatus, setSessionStatus] = useState('✅ Ready');
   const [orbState, setOrbState]           = useState('idle');
   const [captions, setCaptions]           = useState('Tap the microphone to start a conversation.');
   const [muted, setMuted]                 = useState(false);
-  const [bridgeMode, setBridgeMode]       = useState(false);
+  const [bridgeMode, setBridgeMode]       = useState(
+    () => localStorage.getItem('vani_bridge_mode') === 'true'
+  );
+  const [bridgeLangOpen, setBridgeLangOpen] = useState(false);
+  const [paneALangOpen, setPaneALangOpen]   = useState(false);
+  const [paneBLangOpen, setPaneBLangOpen]   = useState(false);
   const [vadMode, setVadMode]             = useState(false);
   const [conversationHistory, setConversationHistory] = useState([]);
   const [secondaryLang, setSecondaryLang] = useState(
     () => localStorage.getItem('vani_secondary_lang') || 'en-IN'
   );
 
+  const closeAllDropdowns = () => {
+    setBridgeLangOpen(false);
+    setPaneALangOpen(false);
+    setPaneBLangOpen(false);
+  };
+
   const orbStateRef = useRef('idle');
   const vadRef      = useRef(null);
+  const abortControllerRef = useRef(null);
+  const dropdownRef = useRef(null);
+
+  // Close all dropdowns on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        closeAllDropdowns();
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setOrbStateSafe = (s) => {
     orbStateRef.current = s;
@@ -94,6 +130,8 @@ const Assistant = ({
     streamAndSpeak,
     clearTTSQueue,
     setExternalAudioBlob,
+    startSpeechRecognition,
+    stopSpeechRecognition,
   } = voiceRecorder;
 
   // ─── VAD mode: Hands-free Voice Activity Detection ───────────────────────────
@@ -112,21 +150,27 @@ const Assistant = ({
               cancelSpeech();
               clearTTSQueue?.();
             }
+            if (abortControllerRef.current) {
+              abortControllerRef.current.abort();
+              abortControllerRef.current = null;
+            }
+            startSpeechRecognition?.();
             setOrbStateSafe('listening');
-            setSessionStatus('Listening...');
+            setSessionStatus('🎤 Listening');
             setCaptions('Go ahead, I am listening...');
           },
           onSpeechEnd: async (audio) => {
             if (muted) return;
+            stopSpeechRecognition?.();
             setOrbStateSafe('thinking');
-            setSessionStatus('Processing...');
+            setSessionStatus('🧠 Translating');
             const wavBlob = float32ToWav(audio);
             await setExternalAudioBlob?.(wavBlob);
           },
           positiveSpeechThreshold: 0.8,
           negativeSpeechThreshold: 0.35,
           minSpeechFrames: 3,
-          redemptionFrames: 8,
+          redemptionFrames: 100, // ~3 seconds silence timeout
         });
         vadRef.current = vad;
         vad.start();
@@ -139,20 +183,20 @@ const Assistant = ({
     } else {
       vadRef.current?.destroy?.();
       vadRef.current = null;
-      setSessionStatus('Voice Session Active');
+      setSessionStatus('✅ Ready');
     }
   }, [vadMode, muted, cancelSpeech, clearTTSQueue, setExternalAudioBlob]);
 
   useEffect(() => {
     if (isRecording) {
       setOrbStateSafe('listening');
-      setSessionStatus('Listening...');
+      setSessionStatus('🎤 Listening');
       setCaptions('Go ahead, I am listening to your voice...');
       cancelSpeech();
     } else {
       if (orbStateRef.current === 'listening') {
         setOrbStateSafe('thinking');
-        setSessionStatus('Thinking...');
+        setSessionStatus('🧠 Translating');
         setCaptions('Processing your request...');
       }
     }
@@ -164,23 +208,23 @@ const Assistant = ({
 
     const handleVoiceSubmit = async () => {
       try {
+        // Interpreter / Bridge mode bypasses local STT and LLM completely
+        if (bridgeMode) {
+          await handleBridgeSubmit();
+          return;
+        }
+
         const text = await voiceRecorder.waitForTranscript();
         if (!text) {
           setOrbStateSafe('idle');
-          setSessionStatus('Voice Session Active');
+          setSessionStatus('✅ Ready');
           setCaptions("I couldn't catch that. Tap the mic to try again.");
           clearTTSQueue?.();
           return;
         }
 
-        // Bridge mode uses existing pipeline
-        if (bridgeMode) {
-          await handleBridgeSubmit(text);
-          return;
-        }
-
         setOrbStateSafe('thinking');
-        setSessionStatus('Generating Response...');
+        setSessionStatus('🧠 Translating');
         setCaptions(`"${text}"`);
 
         const updatedHistory = [
@@ -191,12 +235,15 @@ const Assistant = ({
 
         let streamedText = '';
         setOrbStateSafe('speaking');
-        setSessionStatus('Speaking...');
+        setSessionStatus('🔊 Speaking');
+
+        abortControllerRef.current = new AbortController();
 
         await streamAndSpeak({
           messages: updatedHistory,
           langCode: currentLang,
           speed: voiceSpeed,
+          signal: abortControllerRef.current.signal,
           onToken: (token) => {
             streamedText += token;
             setCaptions(streamedText);
@@ -207,19 +254,23 @@ const Assistant = ({
               { role: 'assistant', content: streamedText }
             ]);
             setOrbStateSafe('idle');
-            setSessionStatus('Voice Session Active');
+            setSessionStatus('✅ Ready');
           }
         });
       } catch (err) {
+        if (err.name === 'AbortError') {
+          console.log('AI response was interrupted by user.');
+          return;
+        }
         console.error(err);
         setOrbStateSafe('idle');
-        setSessionStatus('Voice Session Active');
+        setSessionStatus('✅ Ready');
         setCaptions(getErrorMessage(err));
         clearTTSQueue?.();
       } finally {
         if (orbStateRef.current === 'thinking') {
           setOrbStateSafe('idle');
-          setSessionStatus('Voice Session Active');
+          setSessionStatus('✅ Ready');
         }
         resetAudioBlob?.();
       }
@@ -228,11 +279,11 @@ const Assistant = ({
     handleVoiceSubmit();
   }, [audioBlob]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleBridgeSubmit = async (spokenText) => {
+  const handleBridgeSubmit = async () => {
     if (!audioBlob) return;
     setOrbStateSafe('thinking');
-    setSessionStatus(`Translating ${currentLang} → ${secondaryLang}...`);
-    setCaptions(`"${spokenText}"`);
+    setSessionStatus(`🧠 Translating...`);
+    setCaptions('Listening and detecting language...');
 
     try {
       const reader = new FileReader();
@@ -242,47 +293,70 @@ const Assistant = ({
         reader.readAsDataURL(audioBlob);
       });
 
-      const res = await fetch('/api/voice/bridge', {
+      const res = await fetch('/api/voice/interpret', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           audioBase64,
-          sourceLang: currentLang,
-          targetLang: secondaryLang,
+          lang1: currentLang,
+          lang2: secondaryLang,
           mimeType: audioMimeType || 'audio/webm'
         })
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Bridge mode failed');
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Interpreter failed (${res.status})`);
       }
 
       const data = await res.json();
+      
+      // Handle empty transcript (no speech detected)
+      if (!data.transcript || !data.transcript.trim()) {
+        setOrbStateSafe('idle');
+        setSessionStatus('✅ Ready');
+        setCaptions("I couldn't hear you clearly. Try speaking louder or closer to the mic.");
+        return;
+      }
+
       setOrbStateSafe('speaking');
-      setSessionStatus('Bridge Response...');
-      setCaptions(`[${secondaryLang}] ${data.llmReply}`);
+      setSessionStatus(`🔊 Speaking (${data.targetLang})`);
+      
+      const translationDisplay = `[${data.sourceLang}] ${data.transcript}\n↓\n[${data.targetLang}] ${data.translatedText}`;
+      setCaptions(translationDisplay);
+
+      setConversationHistory(prev => [
+        ...prev,
+        {
+          type: 'bridge',
+          sourceLang: data.sourceLang,
+          targetLang: data.targetLang,
+          transcript: data.transcript,
+          translation: data.translatedText
+        }
+      ]);
 
       if (data.audioContent) {
         const audio = new Audio(`data:audio/wav;base64,${data.audioContent}`);
         audio.play();
-        audio.onended = () => { setOrbStateSafe('idle'); setSessionStatus('Bridge Mode Active'); };
+        audio.onended = () => { setOrbStateSafe('idle'); setSessionStatus('✅ Ready'); };
       } else {
-        speakWithTTS(data.llmReply, secondaryLang, voiceSpeed, () => {
+        speakWithTTS(data.translatedText, data.targetLang, voiceSpeed, () => {
           setOrbStateSafe('idle');
-          setSessionStatus('Bridge Mode Active');
+          setSessionStatus('✅ Ready');
         });
       }
     } catch (err) {
-      console.error('Bridge mode error:', err);
+      console.error('Interpreter mode error:', err);
       setOrbStateSafe('idle');
-      setSessionStatus('Voice Session Active');
-      setCaptions('Bridge Mode requires a Sarvam API key. Check Settings.');
+      setSessionStatus('✅ Ready');
+      setCaptions(getErrorMessage(err));
     } finally {
       if (orbStateRef.current === 'thinking') {
         setOrbStateSafe('idle');
-        setSessionStatus('Voice Session Active');
+        setSessionStatus('✅ Ready');
       }
+      resetAudioBlob?.();
     }
   };
 
@@ -302,7 +376,7 @@ const Assistant = ({
     const nextMuted = !muted;
     setMuted(nextMuted);
     setOrbStateSafe('idle');
-    setSessionStatus(nextMuted ? 'Assistant Muted' : 'Voice Session Active');
+    setSessionStatus(nextMuted ? 'Assistant Muted' : '✅ Ready');
     setCaptions(nextMuted ? 'Sound feed muted.' : 'Tap mic to start conversing.');
   };
 
@@ -312,7 +386,7 @@ const Assistant = ({
     clearTTSQueue?.();
     vadRef.current?.destroy?.();
     setOrbStateSafe('idle');
-    setSessionStatus('Voice Session Active');
+    setSessionStatus('✅ Ready');
     setCaptions('Tap the microphone to start a conversation.');
     setMuted(false);
     setVadMode(false);
@@ -320,7 +394,7 @@ const Assistant = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-transparent dark:bg-[#040209] justify-between px-4 sm:p-6 pt-4 sm:pt-6 pb-4 sm:pb-6 relative overflow-hidden">
+    <div ref={dropdownRef} className="flex-1 flex flex-col h-full bg-transparent dark:bg-[#040209] justify-between px-4 sm:p-6 pt-4 sm:pt-6 pb-4 sm:pb-6 relative overflow-hidden">
       
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(138,43,226,0.12)_0%,transparent_70%)] pointer-events-none" />
       
@@ -331,14 +405,19 @@ const Assistant = ({
             <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${orbState === 'listening' ? 'bg-red-500' : 'bg-cyber-cyan'}`} />
             <span className={`relative inline-flex rounded-full h-2 w-2 ${orbState === 'listening' ? 'bg-red-500' : 'bg-cyber-cyan'}`} />
           </span>
-          <span className="text-[10px] sm:text-xs uppercase font-extrabold tracking-widest text-white/50 truncate max-w-[120px] sm:max-w-none">{sessionStatus}</span>
+          <span className={`${accessibilityMode ? 'text-sm sm:text-base' : 'text-[10px] sm:text-xs'} uppercase font-extrabold tracking-widest text-white/50 truncate max-w-[120px] sm:max-w-none`}>{sessionStatus}</span>
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2">
           {/* Bridge Mode toggle */}
           <button
-            onClick={() => setBridgeMode(b => !b)}
-            className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-[9px] sm:text-[10px] font-bold border transition-all cursor-pointer ${
+            onClick={() => {
+              const next = !bridgeMode;
+              setBridgeMode(next);
+              localStorage.setItem('vani_bridge_mode', String(next));
+              closeAllDropdowns();
+            }}
+            className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full ${accessibilityMode ? 'text-xs sm:text-sm px-4 py-2' : 'text-[9px] sm:text-[10px]'} font-bold border transition-all cursor-pointer ${
               bridgeMode
                 ? 'bg-cyber-cyan/15 border-cyber-cyan/30 text-cyber-cyan'
                 : 'bg-white/5 border-white/5 text-white/40 hover:text-white/60'
@@ -346,26 +425,43 @@ const Assistant = ({
             title="Bridge Mode: speak in one language, AI responds in another"
             aria-label={bridgeMode ? 'Disable Bridge Mode' : 'Enable Bridge Mode'}
           >
-            <ArrowLeftRight size={10} />
+            <ArrowLeftRight size={accessibilityMode ? 14 : 10} />
             <span className="hidden sm:inline">Bridge</span> {bridgeMode ? 'ON' : 'OFF'}
           </button>
 
           {bridgeMode && (
-            <select
-              id="bridge-target-lang"
-              name="bridgeTargetLang"
-              aria-label="Bridge Mode target language"
-              value={secondaryLang}
-              onChange={(e) => {
-                setSecondaryLang(e.target.value);
-                localStorage.setItem('vani_secondary_lang', e.target.value);
-              }}
-              className="bg-white/5 border border-cyber-cyan/20 rounded-lg px-1.5 sm:px-2 py-1 text-[9px] sm:text-[10px] text-cyber-cyan font-bold focus:outline-none"
-            >
-              {LANGUAGES.filter(l => l.code !== currentLang).map(l => (
-                <option key={l.code} value={l.code}>{l.label}</option>
-              ))}
-            </select>
+            <div className="relative">
+              <button
+                onClick={() => setBridgeLangOpen(o => !o)}
+                className="flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-white/5 border border-cyber-cyan/20 text-[9px] sm:text-[10px] text-cyber-cyan font-bold transition-all hover:bg-white/10"
+                aria-label="Select Bridge Mode target language"
+              >
+                <span className="truncate max-w-[80px] sm:max-w-[120px]">
+                  {LANGUAGES.find(l => l.code === secondaryLang)?.label || secondaryLang}
+                </span>
+                <span className={`transition-transform flex-shrink-0 ${bridgeLangOpen ? 'rotate-180' : ''}`}>▼</span>
+              </button>
+
+              {bridgeLangOpen && (
+                <div className="absolute top-full right-0 mt-1 glass-panel !bg-[#110e20] border border-white/10 rounded-xl overflow-y-auto overscroll-contain max-h-64 shadow-xl z-[100] w-40" style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
+                  {LANGUAGES.filter(l => l.code !== currentLang).map(l => (
+                    <button
+                      key={l.code}
+                      onClick={() => {
+                        setSecondaryLang(l.code);
+                        localStorage.setItem('vani_secondary_lang', l.code);
+                        setBridgeLangOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs transition-colors hover:bg-white/10 ${
+                        secondaryLang === l.code ? 'text-cyber-cyan font-bold bg-cyber-cyan/10' : 'text-white/70'
+                      }`}
+                    >
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-white/5 border border-white/5 rounded-full text-[10px] font-bold text-cyber-cyan">
@@ -376,7 +472,7 @@ const Assistant = ({
       </div>
 
       {/* Orb — responsive sizing */}
-      <div className="w-full flex-1 flex flex-col justify-center" style={{ maxHeight: 'calc(100vh - 128px)' }}>
+      <div className="w-full flex-1 flex flex-col justify-center" style={{ maxHeight: 'calc(100dvh - 128px)' }}>
         <div className="flex flex-col items-center justify-center relative z-10 w-full" style={{ height: 'clamp(200px, 40vh, 420px)' }}>
           <div className="w-48 h-48 sm:w-72 sm:h-72 md:w-80 md:h-80 lg:w-96 lg:h-96 relative flex items-center justify-center">
             <VoiceOrb state={orbState} isListening={isRecording} audioAnalyser={audioAnalyser} />
@@ -392,28 +488,134 @@ const Assistant = ({
         </div>
       </div>
 
-      {/* Captions */}
-      <div className="w-full max-w-3xl mx-auto px-2 sm:px-4 z-10 min-h-[80px] sm:min-h-[100px] flex items-center justify-center">
-        <div className="glass-panel border-white/5 backdrop-blur-xl px-4 sm:px-8 py-4 sm:py-5 rounded-2xl w-full text-center shadow-glass relative">
-          <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-2 sm:px-3 py-0.5 rounded-full bg-cyber-purple border border-cyber-purple/20 text-[8px] sm:text-[9px] uppercase font-bold tracking-widest text-white/80 whitespace-nowrap">
-            {orbState === 'listening' ? 'Capturing' : orbState === 'speaking' ? 'Assistant Speaking' : 'Dialogue'}
+      {/* Dynamic Content Area: Normal Captions vs Dual Screen */}
+      <div className="w-full max-w-4xl mx-auto px-2 sm:px-4 z-10 flex-1 flex flex-col justify-end pb-4 sm:pb-8">
+        {bridgeMode ? (
+          <div className="flex flex-col md:flex-row gap-3 sm:gap-6 w-full h-full min-h-[140px] max-h-[35vh] md:max-h-[220px]">
+            {/* Speaker A (Left/Top) */}
+            <div className={`flex-1 glass-panel border-white/5 backdrop-blur-xl p-4 sm:p-6 rounded-2xl flex flex-col items-center justify-center relative overflow-visible transition-all duration-500 ${orbState === 'listening' && (!conversationHistory.length || conversationHistory[conversationHistory.length - 1]?.sourceLang !== currentLang) ? 'border-green-500/30 bg-green-500/5' : ''}`}>
+              <div className="absolute top-0 w-full bg-black/20 border-b border-white/5 z-20">
+                <button
+                  onClick={() => { setPaneALangOpen(o => !o); setPaneBLangOpen(false); }}
+                  className="w-full py-1.5 sm:py-2 text-center text-[10px] sm:text-xs uppercase font-extrabold text-white/70 tracking-widest hover:text-white transition-colors cursor-pointer"
+                >
+                  {LANGUAGES.find(l => l.code === currentLang)?.label || currentLang} ▼
+                </button>
+                {paneALangOpen && (
+                  <div className="absolute top-full left-0 right-0 glass-panel !bg-[#110e20] border-b border-white/10 overflow-y-auto overscroll-contain max-h-48 z-[100]" style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
+                    {LANGUAGES.map(l => (
+                      <button
+                        key={l.code}
+                        onClick={() => {
+                          setCurrentLang(l.code);
+                          setPaneALangOpen(false);
+                        }}
+                        className={`w-full text-center px-3 py-2 text-xs transition-colors hover:bg-white/10 ${
+                          currentLang === l.code ? 'text-cyber-cyan font-bold bg-cyber-cyan/10' : 'text-white/70'
+                        }`}
+                      >
+                        {l.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="mt-6 sm:mt-8 text-center w-full overflow-y-auto scrollbar-none flex flex-col justify-center items-center h-full">
+                {conversationHistory.length > 0 && conversationHistory[conversationHistory.length - 1]?.type === 'bridge' ? (
+                  conversationHistory[conversationHistory.length - 1].sourceLang === currentLang ? (
+                    <>
+                      <p className={`text-white/50 ${accessibilityMode ? 'text-sm mb-2' : 'text-[10px] sm:text-xs mb-1.5'} font-medium uppercase tracking-wider`}>Original Speech</p>
+                      <p className={`text-white/90 ${accessibilityMode ? 'text-2xl sm:text-3xl' : 'text-base sm:text-lg'} font-medium`}>{conversationHistory[conversationHistory.length - 1].transcript}</p>
+                    </>
+                  ) : conversationHistory[conversationHistory.length - 1].targetLang === currentLang ? (
+                    <>
+                      <p className={`text-green-400/70 ${accessibilityMode ? 'text-sm mb-2' : 'text-[10px] sm:text-xs mb-1.5'} font-bold uppercase tracking-wider animate-pulse`}>Translated Output</p>
+                      <p className={`text-green-400 ${accessibilityMode ? 'text-2xl sm:text-3xl' : 'text-lg sm:text-xl'} font-bold`}>{conversationHistory[conversationHistory.length - 1].translation}</p>
+                    </>
+                  ) : null
+                ) : (
+                  <p className="text-white/30 text-xs sm:text-sm italic">Awaiting speech...</p>
+                )}
+                
+                {/* Live Transcript overlay for Speaker A */}
+                {(isRecording || vadMode) && liveTranscript && orbState === 'listening' && (
+                  <p className="text-sm md:text-base font-semibold leading-relaxed text-green-400/90 mt-3 absolute bottom-4 animate-pulse">
+                    {liveTranscript}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Speaker B (Right/Bottom) */}
+            <div className={`flex-1 glass-panel border-white/5 backdrop-blur-xl p-4 sm:p-6 rounded-2xl flex flex-col items-center justify-center relative overflow-visible transition-all duration-500 ${orbState === 'listening' && (!conversationHistory.length || conversationHistory[conversationHistory.length - 1]?.sourceLang !== secondaryLang) ? 'border-blue-500/30 bg-blue-500/5' : ''}`}>
+              <div className="absolute top-0 w-full bg-black/20 border-b border-white/5 z-20">
+                <button
+                  onClick={() => { setPaneBLangOpen(o => !o); setPaneALangOpen(false); }}
+                  className="w-full py-1.5 sm:py-2 text-center text-[10px] sm:text-xs uppercase font-extrabold text-white/70 tracking-widest hover:text-white transition-colors cursor-pointer"
+                >
+                  {LANGUAGES.find(l => l.code === secondaryLang)?.label || secondaryLang} ▼
+                </button>
+                {paneBLangOpen && (
+                  <div className="absolute top-full left-0 right-0 glass-panel !bg-[#110e20] border-b border-white/10 overflow-y-auto overscroll-contain max-h-48 z-[100]" style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
+                    {LANGUAGES.filter(l => l.code !== currentLang).map(l => (
+                      <button
+                        key={l.code}
+                        onClick={() => {
+                          setSecondaryLang(l.code);
+                          localStorage.setItem('vani_secondary_lang', l.code);
+                          setPaneBLangOpen(false);
+                        }}
+                        className={`w-full text-center px-3 py-2 text-xs transition-colors hover:bg-white/10 ${
+                          secondaryLang === l.code ? 'text-cyber-cyan font-bold bg-cyber-cyan/10' : 'text-white/70'
+                        }`}
+                      >
+                        {l.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="mt-6 sm:mt-8 text-center w-full overflow-y-auto scrollbar-none flex flex-col justify-center items-center h-full">
+                {conversationHistory.length > 0 && conversationHistory[conversationHistory.length - 1]?.type === 'bridge' ? (
+                  conversationHistory[conversationHistory.length - 1].sourceLang === secondaryLang ? (
+                    <>
+                      <p className={`text-white/50 ${accessibilityMode ? 'text-sm mb-2' : 'text-[10px] sm:text-xs mb-1.5'} font-medium uppercase tracking-wider`}>Original Speech</p>
+                      <p className={`text-white/90 ${accessibilityMode ? 'text-2xl sm:text-3xl' : 'text-base sm:text-lg'} font-medium`}>{conversationHistory[conversationHistory.length - 1].transcript}</p>
+                    </>
+                  ) : conversationHistory[conversationHistory.length - 1].targetLang === secondaryLang ? (
+                    <>
+                      <p className={`text-blue-400/70 ${accessibilityMode ? 'text-sm mb-2' : 'text-[10px] sm:text-xs mb-1.5'} font-bold uppercase tracking-wider animate-pulse`}>Translated Output</p>
+                      <p className={`text-blue-400 ${accessibilityMode ? 'text-2xl sm:text-3xl' : 'text-lg sm:text-xl'} font-bold`}>{conversationHistory[conversationHistory.length - 1].translation}</p>
+                    </>
+                  ) : null
+                ) : (
+                  <p className="text-white/30 text-xs sm:text-sm italic">Awaiting speech...</p>
+                )}
+              </div>
+            </div>
           </div>
-          {isRecording && liveTranscript ? (
-            <p className="text-sm md:text-base font-semibold leading-relaxed text-cyber-cyan/90">
-              {liveTranscript.split(' ').map((word, i) => (
-                <span key={i} className="word-fade" style={{ animationDelay: `${i * 0.04}s` }}>
-                  {word}{' '}
-                </span>
-              ))}
-            </p>
-          ) : (
-            <p className={`text-sm md:text-base font-semibold leading-relaxed transition-all duration-300
-              ${orbState === 'speaking' ? 'streaming-text' : ''}
-              ${orbState === 'listening' ? 'text-cyber-cyan/90 animate-pulse' : 'text-white/80'}`}>
-              {captions}
-            </p>
-          )}
-        </div>
+        ) : (
+          <div className="glass-panel border-white/5 backdrop-blur-xl px-4 sm:px-8 py-4 sm:py-5 rounded-2xl w-full max-w-3xl mx-auto text-center shadow-glass relative">
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-2 sm:px-3 py-0.5 rounded-full bg-cyber-purple border border-cyber-purple/20 text-[8px] sm:text-[9px] uppercase font-bold tracking-widest text-white/80 whitespace-nowrap">
+              {orbState === 'listening' ? 'Capturing' : orbState === 'speaking' ? 'Assistant Speaking' : 'Dialogue'}
+            </div>
+            {(isRecording || vadMode) && liveTranscript ? (
+              <p className={`font-semibold leading-relaxed ${accessibilityMode ? 'text-xl sm:text-3xl' : 'text-sm md:text-base'} text-cyber-cyan/90`}>
+                {liveTranscript.split(' ').map((word, i) => (
+                  <span key={i} className="word-fade" style={{ animationDelay: `${i * 0.04}s` }}>
+                    {word}{' '}
+                  </span>
+                ))}
+              </p>
+            ) : (
+              <p className={`text-sm md:text-base font-semibold leading-relaxed transition-all duration-300
+                ${orbState === 'speaking' ? 'streaming-text' : ''}
+                ${orbState === 'listening' ? 'text-cyber-cyan/90 animate-pulse' : 'text-white/80'}`}>
+                {captions}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Controls */}

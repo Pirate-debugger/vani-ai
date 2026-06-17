@@ -21,6 +21,13 @@ const LANGUAGES = [
   { id: 'pa-IN', label: 'ਪੰਜਾਬੀ', sub: 'Punjabi', flag: '🇮🇳' },
   { id: 'as-IN', label: 'অসমীয়া', sub: 'Assamese', flag: '🇮🇳' },
   { id: 'ur-IN', label: 'اردو', sub: 'Urdu', flag: '🇮🇳' },
+  { id: 'sa-IN', label: 'संस्कृत', sub: 'Sanskrit', flag: '🇮🇳' },
+  { id: 'kok-IN', label: 'कोंकणी', sub: 'Konkani', flag: '🇮🇳' },
+  { id: 'ne-IN', label: 'नेपाली', sub: 'Nepali', flag: '🇮🇳' },
+  { id: 'mai-IN', label: 'मैथिली', sub: 'Maithili', flag: '🇮🇳' },
+  { id: 'sd-IN', label: 'सिन्धी', sub: 'Sindhi', flag: '🇮🇳' },
+  { id: 'bho-IN', label: 'भोजपुरी', sub: 'Bhojpuri', flag: '🇮🇳' },
+  { id: 'awa-IN', label: 'अवधी', sub: 'Awadhi', flag: '🇮🇳' },
 ];
 
 const SPEAKERS = [
@@ -76,7 +83,8 @@ const Settings = ({
   currentLang, setCurrentLang,
   personality, setPersonality,
   voiceSpeed, setVoiceSpeed,
-  apiKey, setApiKey
+  apiKey, setApiKey,
+  accessibilityMode, setAccessibilityMode
 }) => {
   const { getStorageUsage, deleteAllSessions } = useChatHistory();
   const [activeSection, setActiveSection] = useState('language');
@@ -428,6 +436,24 @@ const Settings = ({
           {theme === 'light' && (
             <p className="text-xs text-yellow-400/70 mt-2 font-medium">Note: Light theme is experimental. Full UI support coming soon.</p>
           )}
+        </div>
+
+        <div>
+          <p className="text-xs text-white/40 font-semibold uppercase tracking-wider mb-3">Accessibility</p>
+          <div className="flex items-center justify-between bg-white/5 p-4 rounded-xl border border-white/5">
+            <div>
+              <p className="text-sm font-bold text-white">Large UI Mode</p>
+              <p className="text-xs text-white/40 mt-1">Increases text size and button touch targets</p>
+            </div>
+            <Toggle 
+              value={accessibilityMode} 
+              onChange={(val) => {
+                setAccessibilityMode(val);
+                localStorage.setItem('vani_accessibility', val);
+              }} 
+              label="Toggle Accessibility Mode" 
+            />
+          </div>
         </div>
       </div>
     ),

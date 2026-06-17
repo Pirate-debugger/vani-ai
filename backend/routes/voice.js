@@ -92,9 +92,9 @@ router.post('/stt', upload.single('file'), async (req, res, next) => {
       contentType: file.mimetype || 'audio/wav',
     });
     formData.append('model', 'saaras:v3');
-    // Support 'auto' for automatic language detection
-    const sttLang = languageCode === 'auto' ? 'unknown' : languageCode;
-    formData.append('language_code', sttLang);
+    if (languageCode && languageCode !== 'auto' && languageCode !== 'unknown') {
+      formData.append('language_code', languageCode);
+    }
 
     const response = await axios.post('https://api.sarvam.ai/speech-to-text', formData, {
       headers: {
@@ -392,6 +392,144 @@ router.post('/bridge', async (req, res, next) => {
   } catch (err) {
     console.error('Bridge Mode Error:', err.response?.data || err.message);
     next(err);
+  }
+});
+
+/**
+ * 5. Interpreter Endpoint (/api/voice/interpret)
+ * Real-time two-way translation without LLM generation.
+ * Automatically detects the language spoken (lang1 or lang2) and translates to the other.
+ */
+router.post('/interpret', async (req, res, next) => {
+  const STEP_TIMEOUT = 12000;
+  try {
+    const { audioBase64, lang1, lang2, mimeType } = req.body;
+    const apiKey = await getSarvamKey(req);
+
+    if (!apiKey) {
+      return res.status(503).json({ error: 'Sarvam API key required for Interpreter mode.' });
+    }
+    if (!audioBase64) return res.status(400).json({ error: 'audioBase64 is required.' });
+
+    // Step 1: STT — use lang1 as the primary language hint
+    // Sarvam STT requires a valid language_code; it will still detect other languages
+    let transcript, detectedLangCode;
+    try {
+      const audioBuffer = Buffer.from(audioBase64, 'base64');
+      const ext = (mimeType || 'audio/webm').split('/')[1]?.split(';')[0] || 'webm';
+      const sttForm = new FormData();
+      sttForm.append('file', audioBuffer, {
+        filename: `input.${ext}`,
+        contentType: mimeType || 'audio/webm'
+      });
+      sttForm.append('model', 'saaras:v3');
+      sttForm.append('language_code', lang1); // Use selected language as hint
+      
+      const sttRes = await axios.post('https://api.sarvam.ai/speech-to-text', sttForm, {
+        headers: { 'api-subscription-key': apiKey, ...sttForm.getHeaders() },
+        timeout: STEP_TIMEOUT
+      });
+      transcript = sttRes.data.transcript;
+      detectedLangCode = sttRes.data.language_code || lang1;
+      console.log(`[Interpret STT] Transcript: "${transcript}", Detected: ${detectedLangCode}`);
+    } catch (err) {
+      console.error('[Interpret STT Error]', err.response?.data || err.message);
+      throw new Error(`Interpreter step failed at STT: ${JSON.stringify(err.response?.data) || err.message}`);
+    }
+
+    if (!transcript || !transcript.trim()) {
+      return res.json({ 
+        transcript: "", 
+        translatedText: "", 
+        audioContent: null, 
+        sourceLang: lang1, 
+        targetLang: lang2, 
+        detectedLanguage: "unknown" 
+      });
+    }
+
+    // Determine source and target based on detected language
+    // We MUST use strict codes (lang1 or lang2) for the Translator to avoid 400 Bad Request errors.
+    const prefix1 = lang1.split('-')[0];
+    const prefix2 = lang2.split('-')[0];
+    
+    let isLang1 = true; // Default to assuming they spoke lang1
+    if (detectedLangCode && detectedLangCode.startsWith(prefix2)) {
+      isLang1 = false;
+    } else if (detectedLangCode && detectedLangCode.startsWith(prefix1)) {
+      isLang1 = true;
+    }
+
+    const sourceLang = isLang1 ? lang1 : lang2;
+    const targetLang = isLang1 ? lang2 : lang1;
+
+    // Step 2: Translate to Target Language
+    let translatedText;
+    try {
+      console.log(`[Interpret Translate] ${sourceLang} → ${targetLang}: "${transcript.substring(0, 50)}"`);
+      const translateRes = await axios.post('https://api.sarvam.ai/translate', {
+        input: transcript,
+        source_language_code: sourceLang,
+        target_language_code: targetLang,
+        model: 'mayura:v1',
+        mode: 'formal'
+      }, { 
+        headers: { 'api-subscription-key': apiKey, 'Content-Type': 'application/json' },
+        timeout: STEP_TIMEOUT
+      });
+      translatedText = translateRes.data.translated_text;
+      console.log(`[Interpret Translate] Result: "${translatedText?.substring(0, 50)}"`);
+    } catch (err) {
+      console.error('[Interpret Translate Error]', err.response?.data || err.message);
+      throw new Error(`Interpreter step failed at Translate: ${JSON.stringify(err.response?.data) || err.message}`);
+    }
+
+    // Supported TTS languages for Sarvam Bulbul v2
+    const supportedTTSLanguages = ['en-IN', 'hi-IN', 'bn-IN', 'gu-IN', 'kn-IN', 'ml-IN', 'mr-IN', 'or-IN', 'pa-IN', 'ta-IN', 'te-IN'];
+
+    // Step 3: TTS in Target Language (Skip LLM Generation completely)
+    let audioContent = null;
+    if (supportedTTSLanguages.includes(targetLang)) {
+      try {
+        let defaultSpeaker = 'anushka';
+        if (targetLang.startsWith('ta')) defaultSpeaker = 'arya';
+        else if (targetLang.startsWith('en')) defaultSpeaker = 'abhilash';
+        else if (targetLang.startsWith('mr')) defaultSpeaker = 'manisha';
+
+        const ttsRes = await axios.post('https://api.sarvam.ai/text-to-speech', {
+          text: translatedText.substring(0, 500),
+          target_language_code: targetLang,
+          speaker: defaultSpeaker,
+          model: 'bulbul:v2',
+          speech_sample_rate: 22050,
+          enable_preprocessing: true
+        }, { 
+          headers: { 'api-subscription-key': apiKey, 'Content-Type': 'application/json' },
+          timeout: STEP_TIMEOUT
+        });
+        audioContent = ttsRes.data.audios?.[0] || null;
+      } catch (err) {
+        console.warn(`TTS fallback triggered due to error: ${err.message}`);
+        // Do not throw error here, allow fallback to browser TTS
+      }
+    } else {
+      console.log(`[TTS Skip] Language ${targetLang} not supported by Sarvam TTS, bypassing for native fallback.`);
+    }
+
+    return res.json({ 
+      transcript, 
+      translatedText, 
+      audioContent, 
+      sourceLang, 
+      targetLang, 
+      detectedLanguage: detectedLangCode 
+    });
+  } catch (err) {
+    console.error('Interpreter Mode Error:', err.response?.data || err.message);
+    return res.status(err.response?.status || 500).json({
+      error: err.message,
+      details: err.response?.data || null
+    });
   }
 });
 

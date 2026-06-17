@@ -15,10 +15,13 @@ model User {
   name         String
   email        String        @unique
   passwordHash String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  sessions     ChatSession[]
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  sessions         ChatSession[]
   apiKeys      ApiKey[]
+  projects     Project[]
 }
 
 model ChatSession {
@@ -27,6 +30,9 @@ model ChatSession {
   user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String        @default("New Chat")
   lang      String        @default("hi-IN")
+  agentType String        @default("voice_assistant")
+  projectId String?
+  project   Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
   createdAt DateTime      @default(now())
   messages  ChatMessage[]
 }
@@ -61,4 +67,38 @@ enum ApiProvider {
   sarvam
   openai
   gemini
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  status      String        @default("active")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  documents   Document[]
+  sessions    ChatSession[]
+}
+
+model Document {
+  id          String            @id @default(cuid())
+  projectId   String
+  project     Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type        String            // brd, prd, roadmap, startup_plan, user_stories, etc.
+  title       String
+  content     String            // Stored as Markdown or JSON string
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  versions    DocumentVersion[]
+}
+
+model DocumentVersion {
+  id          String   @id @default(cuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  content     String
+  createdAt   DateTime @default(now())
+  versionName String?
 }

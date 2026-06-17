@@ -10,9 +10,11 @@ const Home = ({
   voiceRecorder, 
   messages, 
   setMessages,
-  onSubmitPrompt 
+  onSubmitPrompt,
+  accessibilityMode,
+  setPersonality
 }) => {
-  const [statusText, setStatusText] = useState('How can Vani AI help you today?');
+  const [statusText, setStatusText] = useState('How can Bharat Startup Copilot help you today?');
   const [orbState, setOrbState]     = useState('idle');
   const [textInput, setTextInput]   = useState('');
   const [isAiThinking, setIsAiThinking] = useState(false);
@@ -78,7 +80,8 @@ const Home = ({
         role: 'assistant',
         content: aiResponse.response,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        simulated: aiResponse.simulated
+        simulated: aiResponse.simulated,
+        emotion: aiResponse.emotion
       };
       setMessages(prev => [...prev, aiMessage]);
       setOrbStateSafe('speaking');
@@ -110,16 +113,55 @@ const Home = ({
       
       {/* Hero Section */}
       <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 pt-4 sm:pt-8 pb-4 flex flex-col items-center text-center">
-        <div className="inline-flex items-center gap-2 px-3 py-1 border border-cyber-purple/30 bg-cyber-purple/10 rounded-full text-[11px] sm:text-xs font-semibold text-cyber-cyan shadow-glow-cyan/5 mb-3 sm:mb-4">
+        <div className={`inline-flex items-center gap-2 px-3 py-1 border border-cyber-purple/30 bg-cyber-purple/10 rounded-full ${accessibilityMode ? 'text-sm sm:text-base' : 'text-[11px] sm:text-xs'} font-semibold text-cyber-cyan shadow-glow-cyan/5 mb-3 sm:mb-4`}>
           <Sparkles size={11} className="animate-spin" />
-          <span>Multilingual Voice assistant v3.0</span>
+          <span>Bharat Startup Copilot v1.0</span>
         </div>
-        <h1 className="text-2xl sm:text-4xl md:text-5xl font-black bg-gradient-to-r from-white via-white/80 to-cyber-cyan bg-clip-text text-transparent tracking-tight leading-tight px-2">
+        <h1 className={`${accessibilityMode ? 'text-4xl sm:text-5xl md:text-6xl' : 'text-2xl sm:text-4xl md:text-5xl'} font-black bg-gradient-to-r from-white via-white/80 to-cyber-cyan bg-clip-text text-transparent tracking-tight leading-tight px-2`}>
           {statusText}
         </h1>
-        <p className="text-xs sm:text-sm text-white/40 mt-2 font-medium max-w-sm sm:max-w-none">
-          Say anything in Hindi, Marathi, Tamil, or English to begin.
+        <p className={`${accessibilityMode ? 'text-base sm:text-lg mt-4' : 'text-xs sm:text-sm mt-2'} text-white/40 font-medium max-w-sm sm:max-w-none`}>
+          From Idea to Startup — Using Only Your Voice (in any Indian language).
         </p>
+
+        {/* Persona Selector */}
+        {messages.length === 0 && (
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            {[
+              { id: 'respectful', label: '🧠 General Assistant' },
+              { id: 'startup', label: '🚀 Startup Mode' },
+              { id: 'student', label: '📚 Student Mode' },
+              { id: 'idea_discovery', label: '💡 Idea Discovery' },
+              { id: 'market_research', label: '📊 Market Research' },
+              { id: 'funding', label: '💰 Funding Coach' }
+            ].map(p => (
+              <button
+                key={p.id}
+                onClick={() => setPersonality(p.id)}
+                className={`px-3 py-1.5 rounded-full ${accessibilityMode ? 'text-sm' : 'text-xs'} font-bold transition-all border ${
+                  personality === p.id 
+                    ? 'bg-cyber-cyan/20 border-cyber-cyan text-cyber-cyan shadow-glow-cyan/20' 
+                    : 'bg-white/5 border-white/10 text-white/50 hover:text-white/80'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
+        
+        {/* Hackathon Pitch Button */}
+        {messages.length === 0 && (
+          <button 
+            onClick={() => {
+              setPersonality('demo');
+              processPrompt("Give me your 30-second Hackathon pitch.");
+            }}
+            className="mt-6 inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-cyber-purple/40 to-cyber-cyan/40 border border-cyber-cyan/50 text-white font-extrabold rounded-full shadow-glow-cyan/20 hover:scale-105 transition-transform"
+          >
+            <Sparkles size={16} /> Start Hackathon Pitch
+          </button>
+        )}
       </div>
 
       {/* Orb + Controls */}
@@ -163,7 +205,7 @@ const Home = ({
         <button
           onClick={handleMicClick}
           className={`
-            w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center cursor-pointer transition-all duration-300 relative group
+            ${accessibilityMode ? 'w-24 h-24 sm:w-28 sm:h-28' : 'w-16 h-16 sm:w-20 sm:h-20'} rounded-full flex items-center justify-center cursor-pointer transition-all duration-300 relative group
             ${isRecording
               ? 'bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20'
               : 'btn-glow text-white shadow-glow-neon'}
@@ -172,8 +214,8 @@ const Home = ({
           aria-label={isRecording ? 'Stop recording' : 'Start recording'}
         >
           {isRecording
-            ? <MicOff size={24} className="animate-pulse" />
-            : <Mic size={24} className="group-hover:scale-110 transition-transform sm:w-7 sm:h-7" />}
+            ? <MicOff size={accessibilityMode ? 36 : 24} className="animate-pulse" />
+            : <Mic size={accessibilityMode ? 36 : 24} className="group-hover:scale-110 transition-transform sm:w-7 sm:h-7" />}
         </button>
       </div>
 
@@ -207,8 +249,8 @@ const Home = ({
       {/* Suggestion Cards */}
       {messages.length === 0 && (
         <div className="w-full flex flex-col items-center pt-6 sm:pt-8 border-t border-white/5 mt-5 sm:mt-8">
-          <span className="text-xs uppercase font-extrabold tracking-widest text-white/30 mb-2 px-4">Popular suggestions</span>
-          <SuggestionCards onSelect={processPrompt} currentLang={currentLang} />
+          <span className={`${accessibilityMode ? 'text-sm' : 'text-xs'} uppercase font-extrabold tracking-widest text-white/30 mb-2 px-4`}>Popular suggestions</span>
+          <SuggestionCards onSelect={processPrompt} currentLang={currentLang} accessibilityMode={accessibilityMode} />
         </div>
       )}
 

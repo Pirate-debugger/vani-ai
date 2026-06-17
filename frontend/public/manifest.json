@@ -1,0 +1,17 @@
+{
+  "name": "Vani AI",
+  "short_name": "Vani AI",
+  "description": "Premium Multilingual Voice Assistant for Indian Users.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07050F",
+  "theme_color": "#07050F",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

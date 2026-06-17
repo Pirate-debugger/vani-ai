@@ -4,20 +4,31 @@ import {
   LogOut, User, Plus, Trash2, ChevronDown, ChevronRight, Clock, CheckCircle2
 } from 'lucide-react';
 import { useChatHistory } from '../context/ChatHistoryContext';
+import { useNavigate } from 'react-router-dom';
 
 const LANGUAGES = [
   { code: 'hi-IN', label: 'हिन्दी', sub: 'Hindi' },
-  { code: 'en-IN', label: 'English', sub: 'English (IN)' },
-  { code: 'mr-IN', label: 'मराठी', sub: 'Marathi' },
-  { code: 'ta-IN', label: 'தமிழ்', sub: 'Tamil' },
-  { code: 'te-IN', label: 'తెలుగు', sub: 'Telugu' },
+  { code: 'en-IN', label: 'English', sub: 'English' },
+  { code: 'as-IN', label: 'অসমীয়া', sub: 'Assamese' },
   { code: 'bn-IN', label: 'বাংলা', sub: 'Bengali' },
+  { code: 'brx-IN', label: 'बड़ो', sub: 'Bodo' },
+  { code: 'doi-IN', label: 'डोगरी', sub: 'Dogri' },
   { code: 'gu-IN', label: 'ગુજરાતી', sub: 'Gujarati' },
   { code: 'kn-IN', label: 'ಕನ್ನಡ', sub: 'Kannada' },
+  { code: 'ks-IN', label: 'कॉशुर', sub: 'Kashmiri' },
+  { code: 'kok-IN', label: 'कोंकणी', sub: 'Konkani' },
+  { code: 'mai-IN', label: 'मैथिली', sub: 'Maithili' },
   { code: 'ml-IN', label: 'മലയാളം', sub: 'Malayalam' },
+  { code: 'mni-IN', label: 'ꯃꯤꯇꯩꯂꯣꯟ', sub: 'Manipuri' },
+  { code: 'mr-IN', label: 'मराठी', sub: 'Marathi' },
+  { code: 'ne-IN', label: 'नेपाली', sub: 'Nepali' },
   { code: 'or-IN', label: 'ଓଡ଼ିଆ', sub: 'Odia' },
   { code: 'pa-IN', label: 'ਪੰਜਾਬੀ', sub: 'Punjabi' },
-  { code: 'as-IN', label: 'অসমীয়া', sub: 'Assamese' },
+  { code: 'sa-IN', label: 'संस्कृत', sub: 'Sanskrit' },
+  { code: 'sat-IN', label: 'ᱥᱟᱱᱛᱟᱲᱤ', sub: 'Santali' },
+  { code: 'sd-IN', label: 'सिन्धी', sub: 'Sindhi' },
+  { code: 'ta-IN', label: 'தமிழ்', sub: 'Tamil' },
+  { code: 'te-IN', label: 'తెలుగు', sub: 'Telugu' },
   { code: 'ur-IN', label: 'اردو', sub: 'Urdu' },
 ];
 
@@ -33,7 +44,7 @@ function relativeTime(isoStr) {
   return `${days}d ago`;
 }
 
-const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewChat, user, logout }) => {
+const Sidebar = ({ activeTab, currentLang, setCurrentLang, onNewChat, user, logout, accessibilityMode }) => {
   const [collapsed, setCollapsed]   = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(true);
@@ -41,6 +52,7 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
 
   const isGuest = user?.isGuest || false;
   const { sessions, currentSessionId, loadSession, deleteSession, startNewSession, isLoggedIn } = useChatHistory();
+  const navigate = useNavigate();
 
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
 
@@ -69,8 +81,10 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
 
   const menuItems = [
     { id: 'home',      label: 'Home',           icon: Home },
+    { id: 'dashboard', label: 'Dashboard',      icon: Clock },
     { id: 'chat',      label: 'Chat Assistant',  icon: MessageSquare },
     { id: 'assistant', label: 'Voice Mode',      icon: Mic },
+    { id: 'why-vani',  label: 'Why Vani AI?',    icon: Globe },
     { id: 'settings',  label: 'System Settings', icon: Settings },
   ];
 
@@ -80,20 +94,20 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
 
   const handleSessionClick = (session) => {
     loadSession(session.id);
-    setActiveTab('chat');
+    navigate('/chat');
     setMobileOpen(false);
     if (onNewChat) onNewChat(session.messages, session.lang);
   };
 
   const handleNewChat = () => {
     const id = startNewSession(currentLang);
-    setActiveTab('chat');
+    navigate('/chat');
     setMobileOpen(false);
     if (onNewChat) onNewChat([], currentLang, id);
   };
 
   const handleNavClick = (id) => {
-    setActiveTab(id);
+    navigate(`/${id}`);
     setMobileOpen(false);
   };
 
@@ -280,7 +294,7 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
                     transition-transform duration-200 group-hover:scale-110 flex-shrink-0
                     ${isActive ? 'text-cyber-cyan' : 'text-white/50 group-hover:text-white'}
                   `} />
-                  {!collapsed && <span className="font-semibold text-sm">{item.label}</span>}
+                  {!collapsed && <span className={`${accessibilityMode ? 'text-base' : 'text-sm'} font-semibold tracking-wide`}>{item.label}</span>}
                 </button>
               );
             })}
@@ -308,7 +322,7 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
               </button>
 
               {langOpen && (
-                <div className="absolute bottom-full left-0 right-0 mb-2 glass-panel !bg-[#110e20] border border-white/10 rounded-xl overflow-hidden shadow-xl z-50">
+                <div className="absolute bottom-full left-0 right-0 mb-2 glass-panel !bg-[#110e20] border border-white/10 rounded-xl overflow-y-auto overscroll-contain max-h-64 shadow-xl z-50" style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
                   {LANGUAGES.map(lang => (
                     <button
                       key={lang.code}
@@ -419,10 +433,8 @@ const Sidebar = ({ activeTab, setActiveTab, currentLang, setCurrentLang, onNewCh
               <button
                 key={id}
                 onClick={() => handleNavClick(id)}
-                className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl transition-all ${
-                  activeTab === id
-                    ? 'bg-gradient-to-r from-cyber-purple/20 to-cyber-cyan/10 border border-cyber-cyan/15 text-white'
-                    : 'text-white/50 hover:bg-white/5 border border-transparent'
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all group ${
+                  activeTab === id ? 'bg-cyber-purple/20 text-cyber-cyan shadow-glow-cyan/10 border border-cyber-purple/30' : 'text-white/60 hover:bg-white/5 hover:text-white border border-transparent'
                 }`}
               >
                 <Icon size={16} className={activeTab === id ? 'text-cyber-cyan' : 'text-white/40'} />

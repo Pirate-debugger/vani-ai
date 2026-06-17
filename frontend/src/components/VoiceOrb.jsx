@@ -18,18 +18,18 @@ const VoiceOrb = ({ state, isListening, audioAnalyser }) => {
       glow: 'rgba(189, 0, 255, 0.2)'
     },
     listening: {
-      primary: 'rgba(0, 240, 255, 0.6)', // Bright Cyan
-      secondary: 'rgba(189, 0, 255, 0.45)', // Pink/Purple
-      glow: 'rgba(0, 240, 255, 0.35)'
+      primary: 'rgba(0, 255, 128, 0.6)', // Bright Green
+      secondary: 'rgba(0, 200, 100, 0.45)', // Darker Green
+      glow: 'rgba(0, 255, 128, 0.35)'
     },
     thinking: {
-      primary: 'rgba(189, 0, 255, 0.5)', // Neon Pink
-      secondary: 'rgba(0, 240, 255, 0.4)', // Cyan
-      glow: 'rgba(189, 0, 255, 0.3)'
+      primary: 'rgba(0, 100, 255, 0.5)', // Deep Blue
+      secondary: 'rgba(0, 200, 255, 0.4)', // Light Blue/Cyan
+      glow: 'rgba(0, 100, 255, 0.3)'
     },
     speaking: {
       primary: 'rgba(138, 43, 226, 0.6)', // Deep Purple
-      secondary: 'rgba(0, 255, 128, 0.5)', // Neon Greenish/Cyan
+      secondary: 'rgba(189, 0, 255, 0.5)', // Neon Purple
       glow: 'rgba(138, 43, 226, 0.4)'
     }
   };
@@ -199,11 +199,11 @@ const VoiceOrb = ({ state, isListening, audioAnalyser }) => {
       {/* Decorative Outer Rings */}
       <div className={`
         absolute inset-0 rounded-full border border-white/5 pointer-events-none transition-all duration-1000
-        ${state === 'listening' ? 'scale-110 opacity-40 border-cyber-cyan/20' : 'scale-100 opacity-20'}
+        ${state === 'listening' ? 'scale-110 opacity-40 border-green-400/30' : 'scale-100 opacity-20'}
       `} />
       <div className={`
         absolute inset-8 rounded-full border border-white/10 pointer-events-none transition-all duration-700
-        ${state === 'thinking' ? 'animate-spin border-cyber-purple/20' : 'opacity-10'}
+        ${state === 'thinking' ? 'animate-spin border-blue-400/30' : 'opacity-10'}
       `} />
 
       <canvas 
