@@ -197,7 +197,6 @@ const AppInner = () => {
 
       <Sidebar
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
         currentLang={currentLang}
         setCurrentLang={setCurrentLang}
         onNewChat={handleLoadSession}
