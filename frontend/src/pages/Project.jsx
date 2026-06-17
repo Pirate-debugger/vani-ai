@@ -98,7 +98,7 @@ const Project = () => {
                   key={doc.id}
                   onClick={() => setSelectedDocId(doc.id)}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm font-semibold transition-all ${
-                    (selectedDocId === doc.id || (!selectedDocId && project.documents[0].id === doc.id))
+                    (selectedDocId === doc.id || (!selectedDocId && project.documents[0]?.id === doc.id))
                       ? 'bg-cyber-cyan/10 text-cyber-cyan border border-cyber-cyan/20'
                       : 'text-white/60 hover:text-white hover:bg-white/5 border border-transparent'
                   }`}

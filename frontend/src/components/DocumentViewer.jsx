@@ -1,8 +1,8 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Download, FileText, Share2, History } from 'lucide-react';
+import { Download, FileText, Share2, History, Bot } from 'lucide-react';
 
-const DocumentViewer = ({ document, onExport, onVersionHistory }) => {
+const DocumentViewer = ({ document, onExport, onVersionHistory, onConvertToPrd }) => {
   if (!document) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-white/50 space-y-4">
@@ -31,6 +31,14 @@ const DocumentViewer = ({ document, onExport, onVersionHistory }) => {
         </div>
 
         <div className="flex items-center gap-2">
+          {onConvertToPrd && (
+            <button 
+              onClick={onConvertToPrd}
+              className="flex items-center gap-2 px-3 py-1.5 bg-cyber-purple/20 text-cyber-purple font-bold rounded-lg border border-cyber-purple/30 hover:bg-cyber-purple/30 transition-all text-sm mr-2"
+            >
+              <Bot size={14} /> Convert to PRD
+            </button>
+          )}
           <button 
             onClick={onVersionHistory}
             className="p-2 text-white/60 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors border border-white/10"
