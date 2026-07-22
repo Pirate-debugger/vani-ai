@@ -107,4 +107,21 @@ router.delete('/:id', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/projects/:id/tasks (or /api/project/:id/tasks)
+// Fetch all tasks for a given project
+router.get('/:id/tasks', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const tasks = await prisma.task.findMany({
+      where: { projectId: id },
+      orderBy: { createdAt: 'asc' }
+    });
+    res.json(tasks);
+  } catch (error) {
+    console.error('Error fetching project tasks:', error);
+    res.status(500).json({ error: 'Failed to fetch project tasks' });
+  }
+});
+
 export default router;
+

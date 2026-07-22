@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Mic, MicOff, PhoneOff, Sparkles, Volume2, VolumeX, Radio, ArrowLeftRight } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Sparkles, Volume2, VolumeX, Radio, ArrowLeftRight, Briefcase } from 'lucide-react';
 import VoiceOrb from '../components/VoiceOrb';
+import TaskBoard from '../components/TaskBoard';
+
 
 const LANGUAGES = [
   { code: 'hi-IN', label: 'हिन्दी' },
@@ -74,6 +76,11 @@ const Assistant = ({
   const [secondaryLang, setSecondaryLang] = useState(
     () => localStorage.getItem('vani_secondary_lang') || 'en-IN'
   );
+  const [agentMode, setAgentMode] = useState('chat'); // 'chat' | 'work_agent'
+  const [extractedTasks, setExtractedTasks] = useState([]);
+  const [projectId, setProjectId] = useState(
+    () => localStorage.getItem('current_project_id') || null
+  );
 
   const closeAllDropdowns = () => {
     setBridgeLangOpen(false);
@@ -132,7 +139,9 @@ const Assistant = ({
     setExternalAudioBlob,
     startSpeechRecognition,
     stopSpeechRecognition,
+    sendVoiceCommand,
   } = voiceRecorder;
+
 
   // ─── VAD mode: Hands-free Voice Activity Detection ───────────────────────────
   const handleToggleVAD = useCallback(async () => {
@@ -223,6 +232,37 @@ const Assistant = ({
           return;
         }
 
+        if (agentMode === 'work_agent') {
+          // --- WORK AGENT MODE ---
+          setOrbStateSafe('thinking');
+          setSessionStatus('🧠 Work Agent Processing');
+          setCaptions(`"${text}"`);
+
+          const cmdResult = await sendVoiceCommand(audioBlob, {
+            projectId: projectId || localStorage.getItem('current_project_id') || null,
+            languageCode: currentLang
+          });
+
+          setOrbStateSafe('speaking');
+          setSessionStatus('🔊 Speaking');
+          setCaptions(cmdResult.reply || 'Command processed.');
+
+          if (cmdResult.tasks && cmdResult.tasks.length > 0) {
+            setExtractedTasks(cmdResult.tasks);
+          }
+
+          setConversationHistory(prev => [
+            ...prev,
+            { role: 'user', content: text },
+            { role: 'assistant', content: cmdResult.reply }
+          ]);
+
+          setOrbStateSafe('idle');
+          setSessionStatus('✅ Ready');
+          return;
+        }
+
+        // --- CHAT MODE (Existing behavior) ---
         setOrbStateSafe('thinking');
         setSessionStatus('🧠 Translating');
         setCaptions(`"${text}"`);
@@ -277,7 +317,8 @@ const Assistant = ({
     };
 
     handleVoiceSubmit();
-  }, [audioBlob]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [audioBlob, agentMode, projectId, currentLang]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   const handleBridgeSubmit = async () => {
     if (!audioBlob) return;
@@ -409,7 +450,33 @@ const Assistant = ({
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Agent Mode Toggle */}
+          <div className="flex items-center bg-white/5 border border-white/10 rounded-full p-0.5 text-[9px] sm:text-[10px] font-bold">
+            <button
+              onClick={() => setAgentMode('chat')}
+              className={`px-2.5 py-1 rounded-full transition-all cursor-pointer ${
+                agentMode === 'chat'
+                  ? 'bg-cyber-purple text-white shadow-glow-neon'
+                  : 'text-white/40 hover:text-white/70'
+              }`}
+            >
+              Chat
+            </button>
+            <button
+              onClick={() => setAgentMode('work_agent')}
+              className={`px-2.5 py-1 rounded-full transition-all cursor-pointer flex items-center gap-1 ${
+                agentMode === 'work_agent'
+                  ? 'bg-cyber-cyan/20 border border-cyber-cyan/40 text-cyber-cyan'
+                  : 'text-white/40 hover:text-white/70'
+              }`}
+            >
+              <Briefcase size={10} />
+              Work Agent
+            </button>
+          </div>
+
           {/* Bridge Mode toggle */}
+
           <button
             onClick={() => {
               const next = !bridgeMode;
@@ -616,7 +683,15 @@ const Assistant = ({
             )}
           </div>
         )}
+
+        {/* Task Board Component for Work Agent Mode */}
+        {(agentMode === 'work_agent' || extractedTasks.length > 0) && (
+          <div className="w-full max-w-3xl mx-auto">
+            <TaskBoard tasks={extractedTasks} projectId={projectId} />
+          </div>
+        )}
       </div>
+
 
       {/* Controls */}
       <div className="w-full max-w-xl mx-auto flex items-center justify-around py-4 sm:py-8 px-4 z-10">

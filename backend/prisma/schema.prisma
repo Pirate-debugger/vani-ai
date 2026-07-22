@@ -80,6 +80,7 @@ model Project {
   updatedAt   DateTime      @updatedAt
   documents   Document[]
   sessions    ChatSession[]
+  tasks       Task[]
 }
 
 model Document {
@@ -92,6 +93,7 @@ model Document {
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
   versions    DocumentVersion[]
+  tasks       Task[]
 }
 
 model DocumentVersion {
@@ -102,3 +104,26 @@ model DocumentVersion {
   createdAt   DateTime @default(now())
   versionName String?
 }
+
+enum TaskStatus {
+  pending
+  in_progress
+  done
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  documentId  String?
+  document    Document?  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  assignee    String?
+  status      TaskStatus @default(pending)
+  priority    String     @default("medium")
+  source      String     @default("voice")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+

@@ -387,8 +387,59 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
   }, [clearTTSQueue, playNextInQueue]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
+   * sendVoiceCommand — POSTs audio blob/metadata to /api/voice/command
+   */
+  const sendVoiceCommand = useCallback(async (blob, { projectId, languageCode: langOverride } = {}) => {
+    const lang = langOverride || languageCode;
+    try {
+      setIsSttLoading(true);
+      const formData = new FormData();
+      if (blob) {
+        const ext = (audioMimeType || 'audio/webm').split('/')[1]?.split(';')[0] || 'webm';
+        formData.append('file', blob, `command_audio.${ext}`);
+      }
+      if (projectId) formData.append('projectId', projectId);
+      if (lang) formData.append('language_code', lang);
+
+      const res = await fetch(`${API_BASE}/voice/command`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Voice command failed (${res.status})`);
+      }
+
+      const data = await res.json();
+
+      // Playback audio response if available, or fall back to browser TTS
+      if (data.reply) {
+        if (data.audio_content) {
+          const audio = new Audio(`data:audio/wav;base64,${data.audio_content}`);
+          currentAudioRef.current = audio;
+          setIsSpeaking(true);
+          audio.onended = () => { currentAudioRef.current = null; setIsSpeaking(false); };
+          audio.onerror = () => { currentAudioRef.current = null; speakText(data.reply, lang); };
+          await audio.play().catch(() => speakText(data.reply, lang));
+        } else {
+          speakText(data.reply, lang);
+        }
+      }
+
+      return data;
+    } catch (err) {
+      console.error('[sendVoiceCommand] Error:', err.message);
+      throw err;
+    } finally {
+      setIsSttLoading(false);
+    }
+  }, [languageCode, audioMimeType, speakText]);
+
+  /**
    * setExternalAudioBlob — allows VAD to inject audio from Float32Array/WAV blob
    */
+
   const setExternalAudioBlob = useCallback(async (blob) => {
     if (!blob) return;
     const mimeType = 'audio/wav';
@@ -452,8 +503,10 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     waitForTranscript,
     startSpeechRecognition,
     stopSpeechRecognition,
+    sendVoiceCommand,
     // Exports for testing
     getSupportedMimeType,
     submitAudioToSTT,
   };
 };
+

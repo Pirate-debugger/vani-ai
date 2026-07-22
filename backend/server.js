@@ -9,6 +9,7 @@ import passport from 'passport';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import voiceRoutes from './routes/voice.js';
+import voiceCommandRoutes from './routes/voiceCommand.js';
 import aiRoutes from './routes/ai.js';
 import authRoutes from './routes/auth.js';
 import documentRoutes from './routes/document.js';
@@ -107,10 +108,14 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/voice', voiceRoutes);
+app.use('/api/voice', voiceCommandRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/document', documentRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/projects', projectRoutes);
+app.use('/api/project', projectRoutes);
+
+
 
 // Serve frontend build (production only — in dev, Vite runs separately)
 const publicDir = path.join(__dirname, 'public');
