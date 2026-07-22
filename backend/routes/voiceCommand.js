@@ -47,6 +47,29 @@ const getSarvamKey = async (req) => {
   return process.env.SARVAM_API_KEY;
 };
 
+// Helper to resolve Gemini API key
+const getGeminiKey = async (req) => {
+  if (req.cachedGeminiKey) return req.cachedGeminiKey;
+
+  const user = req.user || req.session?.localUser;
+  if (user && user.id) {
+    try {
+      const apiKeyRow = await prisma.apiKey.findUnique({
+        where: { userId_provider: { userId: user.id, provider: 'gemini' } }
+      });
+      if (apiKeyRow && apiKeyRow.encryptedKey) {
+        const decrypted = decryptKey(apiKeyRow.encryptedKey);
+        req.cachedGeminiKey = decrypted;
+        return decrypted;
+      }
+    } catch (err) {
+      console.error('Error fetching Gemini API key from DB:', err);
+    }
+  }
+
+  return process.env.GEMINI_API_KEY;
+};
+
 /**
  * POST /command (mounted under /api/voice)
  * Accepts multipart audio ('file') or 'transcript' string in body,
@@ -105,8 +128,9 @@ router.post('/command', upload.single('file'), async (req, res, next) => {
     const apiKeys = {
       sarvamKey: apiKey,
       openaiKey: process.env.OPENAI_API_KEY,
-      geminiKey: process.env.GEMINI_API_KEY
+      geminiKey: await getGeminiKey(req)
     };
+
 
     // 2. Classify intent
     const agentType = await identifyAgentIntent(transcript, apiKeys);

@@ -85,8 +85,14 @@ Return the output STRICTLY as a JSON object with the following schema:
 {
   "title": "String",
   "content": "Markdown string containing: Problem Statement, Solution, Innovation, Architecture Diagram Text, Tech Stack, Future Scope, Demo Script, Judge Q&A"
-}
-`};
+}`,
+  research: `You are a Senior AI Research & Intelligence Agent powered by Gemini. Perform deep research, competitor intelligence, and live web market analysis.
+Return the output STRICTLY as a JSON object with the following schema:
+{
+  "title": "String",
+  "content": "Markdown string containing: Executive Summary, Market Statistics, Competitor Analysis, Key Research Findings, Strategic Recommendations, Sources & Citations"
+}`
+};
 
 export const extractTasksFromDocument = async (documentContent, apiKeys) => {
   const prompt = `You are a Delivery Manager Agent. Read the following Business Requirement Document and extract 5-10 concrete action items needed to build it. Return STRICTLY a JSON array, no markdown fences, no extra text:
@@ -101,6 +107,7 @@ ${documentContent}`;
       prompt,
       langCode: 'en-US',
       personality: 'document_agent',
+      provider: apiKeys.geminiKey ? 'gemini' : undefined,
       ...apiKeys
     });
 
@@ -147,6 +154,7 @@ Return STRICTLY a JSON object with this exact shape, no markdown fences, no extr
       prompt,
       langCode: 'en-US',
       personality: 'respectful',
+      provider: apiKeys.geminiKey ? 'gemini' : undefined,
       ...apiKeys
     });
 
@@ -181,6 +189,7 @@ Available Agents:
 - user_story: Generate Epics and User stories.
 - idea_validation: Analyze market demand and risks.
 - market_research: Competitor analysis, SWOT, industry trends.
+- research: Deep research, web search, market statistics, live search intelligence.
 - technical_architect: System design, DB schema, architecture.
 - ux_designer: User personas, journey, UI suggestions.
 - funding: Investor pitch, funding readiness.
@@ -230,13 +239,18 @@ export const runAgentWorkflow = async (projectId, agentType, userPrompt, context
   const agentPrompt = AGENT_SYSTEM_PROMPTS[agentType];
   const enhancedPrompt = `${agentPrompt}\n\nUser Request: ${userPrompt}\n\nIMPORTANT: Return ONLY valid JSON, no markdown formatting blocks around it.`;
 
+  const isResearch = agentType === 'research' || agentType === 'market_research';
+
   const response = await getAIResponse({
     messages: contextMessages,
     prompt: enhancedPrompt,
     langCode: 'en-IN', 
-    personality: 'document_agent', // A new generic persona we'll add to llm.js
+    personality: 'document_agent',
+    enableSearch: isResearch,
+    provider: (isResearch || apiKeys.geminiKey) ? 'gemini' : undefined,
     ...apiKeys
   });
+
 
   try {
     // Attempt to parse JSON

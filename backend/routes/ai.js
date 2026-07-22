@@ -28,13 +28,34 @@ const getSarvamKey = async (req) => {
   return process.env.SARVAM_API_KEY;
 };
 
+// Helper to resolve Gemini API key
+const getGeminiKey = async (req) => {
+  if (req.cachedGeminiKey) return req.cachedGeminiKey;
+  const user = req.user || req.session?.localUser;
+  if (user && user.id) {
+    try {
+      const apiKeyRow = await prisma.apiKey.findUnique({
+        where: { userId_provider: { userId: user.id, provider: 'gemini' } }
+      });
+      if (apiKeyRow && apiKeyRow.encryptedKey) {
+        const decrypted = decryptKey(apiKeyRow.encryptedKey);
+        req.cachedGeminiKey = decrypted;
+        return decrypted;
+      }
+    } catch (err) {
+      console.error('Error fetching Gemini API key from DB:', err);
+    }
+  }
+  return process.env.GEMINI_API_KEY;
+};
+
 /**
  * Chat Completion route (/api/ai/chat)
  * Process prompts using Sarvam Chat Completion, OpenAI, Gemini or local simulator.
  */
 router.post('/chat', async (req, res, next) => {
   try {
-    const { prompt, messages, language_code, personality, profile } = req.body;
+    const { prompt, messages, language_code, personality, profile, provider, enableSearch } = req.body;
     let userPrompt = prompt || (messages?.length ? messages[messages.length - 1].content : '');
 
     if (!userPrompt?.trim() && (!messages || messages.length === 0)) {
@@ -49,8 +70,9 @@ router.post('/chat', async (req, res, next) => {
     const apiKeys = {
       sarvamKey: await getSarvamKey(req),
       openaiKey: process.env.OPENAI_API_KEY,
-      geminiKey: process.env.GEMINI_API_KEY
+      geminiKey: await getGeminiKey(req)
     };
+
 
     let targetAgentType = req.body.agentType;
 
@@ -75,9 +97,12 @@ router.post('/chat', async (req, res, next) => {
         langCode: language_code || 'hi-IN',
         personality,
         profile,
+        provider,
+        enableSearch,
         ...apiKeys
       });
     }
+
 
     return res.json(response);
   } catch (error) {

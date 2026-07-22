@@ -98,29 +98,66 @@ export const callOpenAILLM = async (messages, prompt, langCode, personality, pro
   };
 };
 
-export const callGeminiLLM = async (messages, prompt, langCode, personality, profileContext, apiKey) => {
+export const callGeminiLLM = async (messages, prompt, langCode, personality, profileContext, apiKey, options = {}) => {
   const systemPrompt = getSystemPrompt(personality, langCode, profileContext);
-  const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-    system_instruction: { parts: [{ text: systemPrompt }] },
-    contents: [{
-      parts: [{
-        text: prompt
-      }]
-    }]
-  });
+  const enableSearch = options.enableSearch || personality === 'research' || personality === 'market_research' || personality === 'deep_research';
 
-  const geminiText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (geminiText) {
-    return {
-      response: geminiText,
-      model: 'gemini-2.5-flash',
-      simulated: false
-    };
+  // Build Gemini contents array from messages or prompt
+  let contents = [];
+  if (messages && messages.length > 0) {
+    contents = messages.map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    }));
+  } else {
+    contents = [{
+      role: 'user',
+      parts: [{ text: prompt }]
+    }];
   }
-  throw new Error('No valid response from Gemini');
+
+  const payload = {
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents
+  };
+
+  if (enableSearch) {
+    payload.tools = [{ googleSearch: {} }];
+  }
+
+  // Model fallback list
+  const models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash'];
+  let lastErr = null;
+
+  for (const modelName of models) {
+    try {
+      console.log(`[LLM Gemini] Requesting ${modelName} (search grounding: ${enableSearch ? 'ON' : 'OFF'})...`);
+      const response = await axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+        payload,
+        { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
+      );
+
+      const candidate = response.data?.candidates?.[0];
+      const geminiText = candidate?.content?.parts?.[0]?.text;
+      if (geminiText) {
+        return {
+          response: geminiText,
+          model: modelName,
+          simulated: false,
+          groundingMetadata: candidate?.groundingMetadata || null
+        };
+      }
+    } catch (err) {
+      console.warn(`[LLM Gemini] ${modelName} attempt failed: ${err.response?.data?.error?.message || err.message}`);
+      lastErr = err;
+    }
+  }
+
+  throw new Error(`Gemini API call failed across models: ${lastErr?.message || 'Unknown error'}`);
 };
 
-export const getAIResponse = async ({ messages, prompt, langCode, personality, profile, sarvamKey, openaiKey, geminiKey }) => {
+export const getAIResponse = async ({ messages, prompt, langCode, personality, profile, provider, enableSearch, sarvamKey, openaiKey, geminiKey }) => {
   const userPrompt = prompt || (messages?.length ? messages[messages.length - 1].content : '');
   const character = personality || 'respectful';
   const profileContext = profile
@@ -129,7 +166,16 @@ export const getAIResponse = async ({ messages, prompt, langCode, personality, p
 
   let rawResponse;
 
-  if (sarvamKey) {
+  if (provider === 'gemini' && geminiKey) {
+    console.log(`[LLM Gemini] Provider explicitly set to Gemini...`);
+    try {
+      rawResponse = await callGeminiLLM(messages, userPrompt, langCode, character, profileContext, geminiKey, { enableSearch });
+    } catch (err) {
+      console.warn('Gemini LLM explicitly requested but failed:', err.message);
+    }
+  }
+
+  if (!rawResponse && sarvamKey) {
     console.log(`[LLM Sarvam] Generating completion for: "${userPrompt.substring(0, 30)}..."`);
     try {
       rawResponse = await callSarvamLLM(messages, userPrompt, langCode, character, profileContext, sarvamKey);
@@ -148,9 +194,9 @@ export const getAIResponse = async ({ messages, prompt, langCode, personality, p
   }
 
   if (!rawResponse && geminiKey) {
-    console.log(`[LLM Gemini] Generating completion via Gemini 2.5 Flash API...`);
+    console.log(`[LLM Gemini] Generating completion via Gemini API...`);
     try {
-      rawResponse = await callGeminiLLM(messages, userPrompt, langCode, character, profileContext, geminiKey);
+      rawResponse = await callGeminiLLM(messages, userPrompt, langCode, character, profileContext, geminiKey, { enableSearch });
     } catch (err) {
       console.warn('Gemini API failed, falling back to simulator...', err.message);
     }
@@ -174,3 +220,4 @@ export const getAIResponse = async ({ messages, prompt, langCode, personality, p
   rawResponse.emotion = emotion;
   return rawResponse;
 };
+
