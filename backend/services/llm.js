@@ -121,7 +121,7 @@ export const callOpenAILLM = async (messages, prompt, langCode, personality, pro
 };
 
 export const callGeminiLLM = async (messages, prompt, langCode, personality, profileContext, apiKey, options = {}) => {
-  const isDoc = options.operationType === 'BRD_GENERATION' || options.operationType === 'PRD_GENERATION' || personality === 'document_agent';
+  const isDoc = options.operationType === 'BRD_GENERATION' || options.operationType === 'PRD_GENERATION' || options.operationType === 'TASK_EXTRACTION' || personality === 'document_agent';
   const systemPrompt = getSystemPrompt(personality, langCode, profileContext, isDoc);
   const enableSearch = options.enableSearch || personality === 'research' || personality === 'market_research' || personality === 'deep_research';
   const maxTokens = options.maxTokens || (isDoc ? 4096 : 1000);
@@ -149,12 +149,17 @@ export const callGeminiLLM = async (messages, prompt, langCode, personality, pro
     }
   };
 
-  if (enableSearch) {
+  if (isDoc || options.structured || options.responseFormat === 'json') {
+    payload.generationConfig.responseMimeType = 'application/json';
+  }
+
+  if (enableSearch && !payload.generationConfig.responseMimeType) {
     payload.tools = [{ googleSearch: {} }];
   }
 
-  // Model fallback list
-  const models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash'];
+  // Model fallback list with modern active models
+  const configuredModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+  const models = Array.from(new Set([configuredModel, 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest']));
   let lastErr = null;
 
   for (const modelName of models) {

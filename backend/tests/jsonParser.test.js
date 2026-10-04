@@ -28,6 +28,20 @@ describe('JSON Parser & Sanitizer', () => {
     expect(result.items).toEqual([1, 2]);
   });
 
+  it('repairs unescaped literal newlines inside string literals', () => {
+    const raw = '{\n  "title": "Raw Newlines",\n  "content": "Line 1\nLine 2\nLine 3"\n}';
+    const result = parseStructuredJSON(raw);
+    expect(result.title).toBe('Raw Newlines');
+    expect(result.content).toBe('Line 1\nLine 2\nLine 3');
+  });
+
+  it('repairs truncated JSON by closing open structures', () => {
+    const raw = '{\n  "title": "Truncated Doc",\n  "content": "Incomplete text';
+    const result = parseStructuredJSON(raw);
+    expect(result.title).toBe('Truncated Doc');
+    expect(result.content).toContain('Incomplete text');
+  });
+
   it('throws on completely invalid unparseable text', () => {
     expect(() => parseStructuredJSON('Just plain conversational text without any JSON structure.'))
       .toThrow(/Failed to parse structured JSON/);

@@ -519,13 +519,19 @@ ${liveResearchData.sources.map((s, i) => `[${i + 1}] ${s.title} (${s.url}): ${s.
     }
   }
 
-  // If no projectId provided
+  // If no projectId provided (preview mode)
+  let previewTasks = [];
+  if (agentType === 'brd' || agentType === 'prd') {
+    previewTasks = await extractTasksFromDocument(parsedDocument.content, apiKeys);
+  }
+
   return {
     response: `Generated successfully (Preview mode): ${parsedDocument.title}`,
+    title: parsedDocument.title,
     summary: parsedDocument.summary,
     content: parsedDocument.content,
     metadata: parsedDocument.metadata,
     model: response.model,
-    tasks: []
+    tasks: previewTasks
   };
 };

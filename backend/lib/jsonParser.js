@@ -59,6 +59,96 @@ function extractJsonSubstring(text) {
 }
 
 /**
+ * Sanitizes unescaped control characters inside string literals (e.g. raw newlines, carriage returns, tabs)
+ */
+export function sanitizeControlCharsInStrings(str) {
+  if (typeof str !== 'string') return '';
+  let result = '';
+  let inString = false;
+  let isEscaped = false;
+
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+
+    if (inString) {
+      if (isEscaped) {
+        result += char;
+        isEscaped = false;
+      } else if (char === '\\') {
+        result += char;
+        isEscaped = true;
+      } else if (char === '"') {
+        result += char;
+        inString = false;
+      } else if (char === '\n') {
+        result += '\\n';
+      } else if (char === '\r') {
+        result += '\\r';
+      } else if (char === '\t') {
+        result += '\\t';
+      } else {
+        const code = char.charCodeAt(0);
+        if (code < 32) {
+          result += '\\u' + code.toString(16).padStart(4, '0');
+        } else {
+          result += char;
+        }
+      }
+    } else {
+      if (char === '"') {
+        inString = true;
+      }
+      result += char;
+    }
+  }
+
+  if (inString) {
+    result += '"';
+  }
+
+  return result;
+}
+
+/**
+ * Attempts to close truncated JSON structures (missing closing quotes, brackets, braces)
+ */
+export function attemptCloseTruncatedJson(str) {
+  if (typeof str !== 'string') return '';
+  let openBraces = 0;
+  let openBrackets = 0;
+  let inString = false;
+  let isEscaped = false;
+
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+    if (inString) {
+      if (isEscaped) isEscaped = false;
+      else if (char === '\\') isEscaped = true;
+      else if (char === '"') inString = false;
+    } else {
+      if (char === '"') inString = true;
+      else if (char === '{') openBraces++;
+      else if (char === '}') openBraces = Math.max(0, openBraces - 1);
+      else if (char === '[') openBrackets++;
+      else if (char === ']') openBrackets = Math.max(0, openBrackets - 1);
+    }
+  }
+
+  let closed = str.trim();
+  if (inString) closed += '"';
+  closed = closed.replace(/,\s*$/, '');
+  while (openBrackets > 0) {
+    closed += ']';
+    openBrackets--;
+  }
+  while (openBraces > 0) {
+    closed += '}';
+    openBraces--;
+  }
+  return closed;
+}
+
+/**
  * parseStructuredJSON
  * Parses JSON with fallback strategies and minor repairs.
  *
@@ -96,11 +186,27 @@ export function parseStructuredJSON(raw) {
     // Continue to repair attempts
   }
 
-  // Attempt 4: Fix single quotes to double quotes if valid JSON keys are single quoted
+  // Attempt 4: Sanitize unescaped control chars / newlines within string literals
+  try {
+    const sanitized = sanitizeControlCharsInStrings(repaired);
+    return JSON.parse(sanitized);
+  } catch (err4) {
+    // Continue to repair attempts
+  }
+
+  // Attempt 5: Handle truncated JSON that was cut off mid-stream
+  try {
+    const closed = attemptCloseTruncatedJson(sanitizeControlCharsInStrings(repaired));
+    return JSON.parse(closed);
+  } catch (err5) {
+    // Continue to repair attempts
+  }
+
+  // Attempt 6: Fix single quotes to double quotes if valid JSON keys are single quoted
   try {
     const singleQuoteFixed = repaired.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, '"$1"');
     return JSON.parse(singleQuoteFixed);
-  } catch (err4) {
+  } catch (err6) {
     // Failed all attempts
   }
 

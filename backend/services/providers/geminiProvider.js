@@ -1,9 +1,9 @@
 import { GoogleGenAI } from '@google/genai';
 
 export const GEMINI_MODELS = {
-  FAST: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-  REASONING: process.env.GEMINI_REASONING_MODEL || 'gemini-2.5-pro',
-  DOCUMENT: process.env.GEMINI_DOCUMENT_MODEL || 'gemini-2.5-pro'
+  FAST: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+  REASONING: process.env.GEMINI_REASONING_MODEL || 'gemini-3.5-flash',
+  DOCUMENT: process.env.GEMINI_DOCUMENT_MODEL || 'gemini-3.5-flash'
 };
 
 let genAIInstance = null;
