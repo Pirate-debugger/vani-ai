@@ -208,14 +208,21 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
         const blob = new Blob(audioChunksRef.current, { type: actualMimeType });
         const browserTranscript = transcriptRef.current.trim();
         let finalTranscript = browserTranscript;
-        if (!browserTranscript) {
-          const sttResult = await submitAudioToSTT(blob, actualMimeType);
-          if (sttResult) {
-            finalTranscript = sttResult;
-            transcriptRef.current = sttResult;
-            setTranscript(sttResult);
+
+        // Sequence: Speech -> interim browser transcript -> recording finalized -> browser recognition stopped -> Sarvam final STT -> canonical transcript
+        try {
+          if (blob && blob.size > 500) {
+            const sttResult = await submitAudioToSTT(blob, actualMimeType);
+            if (sttResult && sttResult.trim()) {
+              finalTranscript = sttResult.trim();
+              transcriptRef.current = finalTranscript;
+              setTranscript(finalTranscript);
+            }
           }
+        } catch (sttErr) {
+          console.warn('[Voice Engine] Authoritative Sarvam STT error, falling back to interim transcript:', sttErr.message);
         }
+
         setAudioBlob(blob);
 
         if (voiceSessionRef.current) {

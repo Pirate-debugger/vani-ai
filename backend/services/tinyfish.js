@@ -3,23 +3,23 @@ import { TinyFish } from '@tiny-fish/sdk';
 let clientInstance = null;
 
 /**
- * Checks if TinyFish API Key is configured in backend environment
+ * Checks if TinyFish API Key is configured in backend environment or passed key
  */
-export const isTinyFishConfigured = () => {
-  return Boolean(process.env.TINYFISH_API_KEY && process.env.TINYFISH_API_KEY.trim());
+export const isTinyFishConfigured = (overrideKey) => {
+  const key = overrideKey || process.env.TINYFISH_API_KEY;
+  return Boolean(key && key.trim());
 };
 
 /**
  * Returns a cached or new TinyFish client instance
  */
-export const getTinyFishClient = () => {
-  if (!isTinyFishConfigured()) {
-    return null;
-  }
-  if (!clientInstance) {
-    clientInstance = new TinyFish({
-      apiKey: process.env.TINYFISH_API_KEY.trim()
-    });
+export const getTinyFishClient = (overrideKey) => {
+  const key = (overrideKey || process.env.TINYFISH_API_KEY || '').trim();
+  if (!key) return null;
+  if (!clientInstance || overrideKey) {
+    const client = new TinyFish({ apiKey: key });
+    if (!overrideKey) clientInstance = client;
+    return client;
   }
   return clientInstance;
 };
@@ -34,19 +34,25 @@ const withTimeout = (promise, ms = 15000, errorMsg = 'Operation timed out') => {
   ]);
 };
 
+function extractDomain(urlStr) {
+  try {
+    const u = new URL(urlStr);
+    return u.hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Executes a web search via TinyFish Search API
- *
- * @param {string} query - The search query
- * @param {object} [options] - Optional limit and timeout
- * @returns {Promise<{ success: boolean, available: boolean, results: Array<{ title: string, url: string, snippet: string }>, error?: string }>}
  */
 export const searchWeb = async (query, options = {}) => {
   if (!query || typeof query !== 'string') {
     return { success: false, available: false, results: [], error: 'Search query is required' };
   }
 
-  const client = getTinyFishClient();
+  const apiKey = options.apiKey || options.tinyfishKey;
+  const client = getTinyFishClient(apiKey);
   if (!client) {
     return {
       success: false,
@@ -61,18 +67,32 @@ export const searchWeb = async (query, options = {}) => {
 
   try {
     console.log(`[TinyFish Search] Querying: "${query}" (limit: ${limit})`);
-    const response = await withTimeout(
-      client.search.query({ query }),
-      timeoutMs,
-      `TinyFish search timed out after ${timeoutMs}ms`
-    );
+    
+    let response;
+    if (typeof client.search?.query === 'function') {
+      response = await withTimeout(
+        client.search.query({ query }),
+        timeoutMs,
+        `TinyFish search timed out after ${timeoutMs}ms`
+      );
+    } else if (typeof client.search === 'function') {
+      response = await withTimeout(
+        client.search({ query, limit }),
+        timeoutMs,
+        `TinyFish search timed out after ${timeoutMs}ms`
+      );
+    }
 
-    const rawResults = response?.results || response?.data || [];
-    const normalized = rawResults.slice(0, limit).map(item => ({
-      title: item.title || item.name || 'Web Source',
-      url: item.url || item.link || '',
-      snippet: item.snippet || item.description || item.content || ''
-    })).filter(r => r.url);
+    const rawResults = response?.results || response?.items || response?.data || response || [];
+    const normalized = (Array.isArray(rawResults) ? rawResults : [])
+      .slice(0, limit)
+      .map(item => ({
+        title: item.title || item.name || 'Web Source',
+        url: item.url || item.link || '',
+        snippet: item.snippet || item.description || item.content || '',
+        domain: extractDomain(item.url || item.link || '')
+      }))
+      .filter(r => r.url && (r.url.startsWith('http://') || r.url.startsWith('https://')));
 
     return {
       success: true,
@@ -92,16 +112,14 @@ export const searchWeb = async (query, options = {}) => {
 
 /**
  * Fetches and extracts clean markdown/text content from a URL via TinyFish Fetch API
- *
- * @param {string} url - Target URL to fetch
- * @param {object} [options]
  */
 export const fetchWeb = async (url, options = {}) => {
   if (!url || typeof url !== 'string') {
     return { success: false, available: false, content: null, error: 'URL is required' };
   }
 
-  const client = getTinyFishClient();
+  const apiKey = options.apiKey || options.tinyfishKey;
+  const client = getTinyFishClient(apiKey);
   if (!client) {
     return {
       success: false,
@@ -115,20 +133,30 @@ export const fetchWeb = async (url, options = {}) => {
 
   try {
     console.log(`[TinyFish Fetch] Fetching URL: ${url}`);
-    const response = await withTimeout(
-      client.fetch.getContents({ urls: [url] }),
-      timeoutMs,
-      `TinyFish fetch timed out for URL ${url}`
-    );
+    let response;
+    if (typeof client.fetch?.getContents === 'function') {
+      response = await withTimeout(
+        client.fetch.getContents({ urls: [url], format: 'markdown' }),
+        timeoutMs,
+        `TinyFish fetch timed out for URL ${url}`
+      );
+    } else if (typeof client.fetch === 'function') {
+      response = await withTimeout(
+        client.fetch({ url, format: 'markdown' }),
+        timeoutMs,
+        `TinyFish fetch timed out for URL ${url}`
+      );
+    }
 
-    const result = response?.results?.[0] || response?.[0] || null;
+    const result = response?.results?.[0] || response?.[0] || response || null;
     const content = result?.content || result?.markdown || result?.text || null;
 
     return {
       success: true,
       available: true,
       url,
-      content
+      content,
+      domain: extractDomain(url)
     };
   } catch (error) {
     console.error(`[TinyFish Fetch] Error fetching "${url}":`, error.message);
@@ -144,13 +172,10 @@ export const fetchWeb = async (url, options = {}) => {
 
 /**
  * Runs a browser-based agent goal on a target website
- *
- * @param {string} url - Target website URL
- * @param {string} goal - Goal description for the agent
- * @param {object} [options]
  */
 export const runWebAgent = async (url, goal, options = {}) => {
-  const client = getTinyFishClient();
+  const apiKey = options.apiKey || options.tinyfishKey;
+  const client = getTinyFishClient(apiKey);
   if (!client) {
     return {
       success: false,
@@ -164,16 +189,25 @@ export const runWebAgent = async (url, goal, options = {}) => {
 
   try {
     console.log(`[TinyFish WebAgent] Running goal on ${url}: "${goal}"`);
-    const response = await withTimeout(
-      client.agent.run({ url, goal }),
-      timeoutMs,
-      `TinyFish web agent timed out after ${timeoutMs}ms`
-    );
+    let response;
+    if (typeof client.agent?.run === 'function') {
+      response = await withTimeout(
+        client.agent.run({ url, goal }),
+        timeoutMs,
+        `TinyFish web agent timed out after ${timeoutMs}ms`
+      );
+    } else if (typeof client.agent === 'function') {
+      response = await withTimeout(
+        client.agent({ url, goal }),
+        timeoutMs,
+        `TinyFish web agent timed out after ${timeoutMs}ms`
+      );
+    }
 
     return {
       success: true,
       available: true,
-      output: response?.output || response?.result || response
+      output: response?.output || response?.result || response?.summary || response
     };
   } catch (error) {
     console.error(`[TinyFish WebAgent] Error running agent on "${url}":`, error.message);
@@ -187,41 +221,42 @@ export const runWebAgent = async (url, goal, options = {}) => {
 };
 
 /**
- * Intelligent Decision Layer:
- * Determines if a query or agent request requires live web research
+ * Determines whether request requires live web research
  */
 export const shouldUseLiveResearch = (prompt, agentType) => {
   if (!prompt || typeof prompt !== 'string') return false;
 
-  // Explicit research agents
   if (['research', 'market_research', 'idea_validation'].includes(agentType)) {
     return true;
   }
 
   const p = prompt.toLowerCase();
 
-  // Explicit keywords requesting live data, competitors, market, or pricing
-  const researchSignals = [
-    'competitor', 'competitors', 'pratiyogi',
-    'market research', 'market analysis',
-    'pricing', 'prices', 'price', 'market price', 'current price', 'latest price',
-    'current trend', 'latest trend', 'market size',
-    'real-time', 'live research', 'fetch website',
-    'search online', 'browse', 'web research',
-    'existing startups', 'similar apps', 'alternatives'
+  // Negative overrides (simple concepts, definitions, direct programming)
+  const nonResearchSignals = [
+    'explain recursion', 'explain normalization', 'what is sql', 'write a python loop',
+    'hello', 'namaste', 'kaise ho', 'who are you', 'how do i', 'what is a function'
   ];
-
-  for (const signal of researchSignals) {
-    if (p.includes(signal)) {
-      return true;
+  for (const neg of nonResearchSignals) {
+    if (p.includes(neg) && !p.includes('competitor') && !p.includes('market') && !p.includes('price')) {
+      return false;
     }
   }
 
-  return false;
+  const researchSignals = [
+    'competitor', 'competitors', 'pratiyogi',
+    'market research', 'market analysis', 'market size',
+    'pricing', 'prices', 'current price', 'latest price',
+    'compare', 'comparison', 'current trend', 'latest trend',
+    'real-time', 'live research', 'search online', 'browse web',
+    'web research', 'existing startups', 'alternatives'
+  ];
+
+  return researchSignals.some(signal => p.includes(signal));
 };
 
 /**
- * Normalizes research results into structured intelligence for the BRD Agent
+ * Normalizes research results into structured intelligence for the BRD Agent and Research Agent
  */
 export const normalizeResearchResults = (query, searchResults = []) => {
   const sources = [];
@@ -237,12 +272,11 @@ export const normalizeResearchResults = (query, searchResults = []) => {
       title: item.title,
       url: item.url,
       snippet: item.snippet,
+      domain: item.domain || extractDomain(item.url),
       key_findings: item.snippet ? [item.snippet.substring(0, 180)] : []
     });
 
     const text = `${item.title} ${item.snippet}`.toLowerCase();
-
-    // Heuristic classification of signals
     if (text.includes('competitor') || text.includes('vs') || text.includes('alternative') || text.includes('platform')) {
       competitors.push(item.title);
     }
@@ -269,50 +303,146 @@ export const normalizeResearchResults = (query, searchResults = []) => {
 };
 
 /**
- * End-to-end Research Pipeline for BRD Generation
- * Executes targeted search queries, aggregates sources, and normalizes findings.
+ * Constructs structured evidence objects from search results and fetched content
+ * Each evidence item has: { claim, evidence, source, url, confidence }
  */
-export const researchForBRD = async (userIdeaOrPrompt) => {
-  if (!isTinyFishConfigured()) {
+export const extractEvidenceObjects = (sourcesWithContent = []) => {
+  const evidenceList = [];
+
+  for (const src of sourcesWithContent) {
+    if (!src.url) continue;
+    const textSnippet = src.content ? src.content.substring(0, 400).replace(/\n+/g, ' ') : src.snippet;
+    if (textSnippet && textSnippet.length > 20) {
+      evidenceList.push({
+        claim: `Market insight regarding ${src.title || src.domain}`,
+        evidence: textSnippet,
+        source: src.title || src.domain || src.url,
+        url: src.url,
+        confidence: 'high'
+      });
+    }
+  }
+
+  return evidenceList;
+};
+
+/**
+ * End-to-end Focused Research Pipeline
+ * Pipeline:
+ * Research Questions -> TinyFish Search -> Rank Results -> TinyFish Fetch -> Extract Evidence -> Grounded Output
+ */
+export const executeResearchPipeline = async (userIdeaOrPrompt, options = {}) => {
+  const apiKey = options.apiKey || options.tinyfishKey;
+  if (!isTinyFishConfigured(apiKey)) {
     console.log('[TinyFish Pipeline] TinyFish not configured. Proceeding without live research.');
     return {
       available: false,
       sources: [],
+      evidence: [],
       reason: 'NOT_CONFIGURED',
       note: 'Live web research unavailable because TINYFISH_API_KEY is not configured.'
     };
   }
 
   try {
-    console.log(`[TinyFish Pipeline] Beginning research for: "${userIdeaOrPrompt.substring(0, 50)}..."`);
+    console.log(`[TinyFish Pipeline] Beginning research for: "${userIdeaOrPrompt.substring(0, 60)}..."`);
 
-    // Formulate 1-2 focused queries from the user's idea
     const cleanPrompt = userIdeaOrPrompt.replace(/[^\w\s]/gi, ' ').trim();
-    const primaryQuery = `${cleanPrompt} competitors market India`.substring(0, 100);
+    
+    // Create 2 focused research questions (competitors and market pricing)
+    const queries = [
+      `${cleanPrompt} competitors market India`.substring(0, 90),
+      `${cleanPrompt} pricing business model`.substring(0, 90)
+    ];
 
-    const searchRes = await searchWeb(primaryQuery, { limit: 4, timeoutMs: 12000 });
+    const allResults = [];
+    const seenUrls = new Set();
 
-    if (!searchRes.success || searchRes.results.length === 0) {
-      console.log('[TinyFish Pipeline] Search yielded no results or timed out.');
+    for (const q of queries) {
+      const searchRes = await searchWeb(q, { limit: 3, timeoutMs: 12000, apiKey });
+      if (searchRes.success && searchRes.results.length > 0) {
+        for (const item of searchRes.results) {
+          if (!seenUrls.has(item.url)) {
+            seenUrls.add(item.url);
+            allResults.push(item);
+          }
+        }
+      }
+    }
+
+    if (allResults.length === 0) {
       return {
         available: false,
         sources: [],
-        reason: searchRes.error || 'NO_RESULTS',
+        evidence: [],
+        reason: 'NO_RESULTS',
         note: 'Live web research could not find matching sources.'
       };
     }
 
-    const normalized = normalizeResearchResults(primaryQuery, searchRes.results);
-    console.log(`[TinyFish Pipeline] Successfully found ${normalized.sources.length} sources.`);
-    return normalized;
+    // Rank & Fetch top 2-3 unique pages for deep grounded evidence
+    const topResults = allResults.slice(0, 3);
+    const sourcesWithContent = [];
+
+    for (const res of topResults) {
+      let pageContent = null;
+      try {
+        const fetchRes = await fetchWeb(res.url, { timeoutMs: 10000, apiKey });
+        if (fetchRes.success && fetchRes.content) {
+          pageContent = fetchRes.content;
+        }
+      } catch (err) {
+        // Non-fatal, fallback to snippet
+      }
+
+      sourcesWithContent.push({
+        ...res,
+        content: pageContent,
+        key_findings: pageContent 
+          ? [pageContent.substring(0, 180).replace(/\n+/g, ' ')]
+          : [res.snippet]
+      });
+    }
+
+    const evidence = extractEvidenceObjects(sourcesWithContent);
+    const normalized = normalizeResearchResults(queries[0], sourcesWithContent);
+
+    console.log(`[TinyFish Pipeline] Successfully extracted ${sourcesWithContent.length} sources and ${evidence.length} evidence points.`);
+
+    return {
+      ...normalized,
+      evidence,
+      available: sourcesWithContent.length > 0
+    };
 
   } catch (err) {
     console.error('[TinyFish Pipeline] Research error (non-fatal):', err.message);
     return {
       available: false,
       sources: [],
+      evidence: [],
       reason: 'FAILED',
-      note: 'Live web research encountered an error. Proceeding with internal knowledge.'
+      note: 'Live web research encountered an error. Proceeding with domain reasoning.'
     };
   }
+};
+
+/**
+ * Backward compatibility wrapper for orchestrator and agentService
+ */
+export const researchForBRD = async (userIdeaOrPrompt, options = {}) => {
+  return await executeResearchPipeline(userIdeaOrPrompt, options);
+};
+
+export default {
+  isTinyFishConfigured,
+  getTinyFishClient,
+  searchWeb,
+  fetchWeb,
+  runWebAgent,
+  shouldUseLiveResearch,
+  normalizeResearchResults,
+  extractEvidenceObjects,
+  executeResearchPipeline,
+  researchForBRD
 };

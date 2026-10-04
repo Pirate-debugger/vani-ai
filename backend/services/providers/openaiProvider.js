@@ -1,35 +1,32 @@
 import OpenAI from 'openai';
 
 export const OPENAI_MODELS = {
-  CHAT: process.env.OPENAI_CHAT_MODEL || 'gpt-4o-mini',
+  CHAT: process.env.OPENAI_CHAT_MODEL || process.env.OPENAI_MODEL || 'gpt-4o',
   REASONING: process.env.OPENAI_REASONING_MODEL || 'gpt-4o',
   DOCUMENT: process.env.OPENAI_DOCUMENT_MODEL || 'gpt-4o',
   CODE: process.env.OPENAI_CODE_MODEL || 'gpt-4o'
 };
 
-let clientInstance = null;
-
-function getClient() {
-  if (!clientInstance && process.env.OPENAI_API_KEY) {
-    clientInstance = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
-    });
-  }
-  return clientInstance;
+function getClient(overrideKey) {
+  const apiKey = overrideKey || process.env.OPENAI_API_KEY;
+  if (!apiKey || !apiKey.trim()) return null;
+  return new OpenAI({ apiKey: apiKey.trim() });
 }
 
-export function isOpenAIConfigured() {
-  return Boolean(process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.trim() !== '');
+export function isOpenAIConfigured(overrideKey) {
+  const key = overrideKey || process.env.OPENAI_API_KEY;
+  return Boolean(key && key.trim() !== '');
 }
 
 /**
  * Standard Chat Completion
  */
 export async function chat(messages, options = {}) {
+  const apiKey = options.apiKey || options.openaiKey;
   const modelType = options.modelType || 'CHAT';
   const model = options.model || OPENAI_MODELS[modelType] || OPENAI_MODELS.CHAT;
 
-  if (!isOpenAIConfigured()) {
+  if (!isOpenAIConfigured(apiKey)) {
     return {
       text: 'Simulated OpenAI response: Vani AI is operating in development mode.',
       simulated: true,
@@ -38,12 +35,16 @@ export async function chat(messages, options = {}) {
     };
   }
 
-  const client = getClient();
+  const client = getClient(apiKey);
+  const formattedMessages = Array.isArray(messages) 
+    ? messages.map(m => typeof m === 'string' ? { role: 'user', content: m } : m)
+    : [{ role: 'user', content: String(messages) }];
+
   const response = await client.chat.completions.create({
     model,
-    messages,
+    messages: formattedMessages,
     temperature: options.temperature ?? 0.3,
-    max_tokens: options.max_tokens || 1000
+    max_tokens: options.max_tokens || options.maxTokens || 1000
   });
 
   return {
@@ -59,11 +60,12 @@ export async function chat(messages, options = {}) {
  * Generate Structured Output with JSON Schema / Object format
  */
 export async function generateStructured(prompt, options = {}) {
+  const apiKey = options.apiKey || options.openaiKey;
   const systemPrompt = options.systemPrompt || 'You are an expert AI system architect. Output valid JSON adhering strictly to the requested schema.';
   const modelType = options.modelType || 'DOCUMENT';
   const model = options.model || OPENAI_MODELS[modelType] || OPENAI_MODELS.DOCUMENT;
 
-  if (!isOpenAIConfigured()) {
+  if (!isOpenAIConfigured(apiKey)) {
     return {
       text: JSON.stringify({
         title: 'Student PG Finder Startup BRD',
@@ -77,7 +79,7 @@ export async function generateStructured(prompt, options = {}) {
     };
   }
 
-  const client = getClient();
+  const client = getClient(apiKey);
   const messages = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: prompt }
@@ -87,7 +89,7 @@ export async function generateStructured(prompt, options = {}) {
     model,
     messages,
     temperature: options.temperature ?? 0.2,
-    max_tokens: options.max_tokens || 4096,
+    max_tokens: options.max_tokens || options.maxTokens || 4096,
     response_format: { type: 'json_object' }
   };
 

@@ -182,7 +182,7 @@ app.use((err, req, res, next) => {
 });
 
 let server = null;
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   server = app.listen(PORT, () => {
     console.log(`=========================================`);
     console.log(` Vani AI Express Backend Running on:      `);

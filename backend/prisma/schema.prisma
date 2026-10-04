@@ -67,6 +67,7 @@ enum ApiProvider {
   sarvam
   openai
   gemini
+  tinyfish
 }
 
 model Project {
@@ -90,6 +91,7 @@ model Document {
   type        String            // brd, prd, roadmap, startup_plan, user_stories, etc.
   title       String
   content     String            // Stored as Markdown or JSON string
+  metadata    String?           // Stored as JSON string (sources, researchUsed, confidence, etc.)
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
   versions    DocumentVersion[]
@@ -101,6 +103,7 @@ model DocumentVersion {
   documentId  String
   document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   content     String
+  metadata    String?  // Snapshot of document metadata at this version
   createdAt   DateTime @default(now())
   versionName String?
 }

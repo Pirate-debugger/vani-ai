@@ -1,33 +1,31 @@
 import { GoogleGenAI } from '@google/genai';
 
 export const GEMINI_MODELS = {
-  FAST: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
-  REASONING: process.env.GEMINI_REASONING_MODEL || 'gemini-3.5-flash',
-  DOCUMENT: process.env.GEMINI_DOCUMENT_MODEL || 'gemini-3.5-flash'
+  FAST: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  REASONING: process.env.GEMINI_REASONING_MODEL || 'gemini-2.5-flash',
+  DOCUMENT: process.env.GEMINI_DOCUMENT_MODEL || 'gemini-2.5-flash'
 };
 
-let genAIInstance = null;
-
-function getClient() {
-  if (!genAIInstance && process.env.GEMINI_API_KEY) {
-    genAIInstance = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY
-    });
-  }
-  return genAIInstance;
+function getClient(overrideKey) {
+  const apiKey = overrideKey || process.env.GEMINI_API_KEY;
+  if (!apiKey || !apiKey.trim()) return null;
+  return new GoogleGenAI({ apiKey: apiKey.trim() });
 }
 
-export function isGeminiConfigured() {
-  return Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== '');
+export function isGeminiConfigured(overrideKey) {
+  const key = overrideKey || process.env.GEMINI_API_KEY;
+  return Boolean(key && key.trim() !== '');
 }
 
 /**
  * Chat completion with Gemini
  */
 export async function chat(messages, options = {}) {
+  const apiKey = options.apiKey || options.geminiKey;
+  const configured = isGeminiConfigured(apiKey);
   const model = options.model || GEMINI_MODELS.FAST;
 
-  if (!isGeminiConfigured()) {
+  if (!configured) {
     return {
       text: 'Simulated Gemini response: Operating in offline development mode.',
       simulated: true,
@@ -36,7 +34,7 @@ export async function chat(messages, options = {}) {
     };
   }
 
-  const ai = getClient();
+  const ai = getClient(apiKey);
   const prompt = Array.isArray(messages)
     ? messages.map(m => `${m.role}: ${m.content}`).join('\n\n')
     : String(messages);
@@ -46,7 +44,7 @@ export async function chat(messages, options = {}) {
     contents: prompt,
     config: {
       temperature: options.temperature ?? 0.3,
-      maxOutputTokens: options.max_tokens || 1000
+      maxOutputTokens: options.max_tokens || options.maxTokens || 1000
     }
   });
 
@@ -62,10 +60,12 @@ export async function chat(messages, options = {}) {
  * Generate Structured Output with JSON Schema
  */
 export async function generateStructured(prompt, options = {}) {
+  const apiKey = options.apiKey || options.geminiKey;
+  const configured = isGeminiConfigured(apiKey);
   const systemInstruction = options.systemPrompt || 'You are an expert Enterprise Business Analyst. Generate valid JSON matching the requested structure.';
   const model = options.model || GEMINI_MODELS.DOCUMENT;
 
-  if (!isGeminiConfigured()) {
+  if (!configured) {
     return {
       text: JSON.stringify({
         title: 'Student PG Finder Startup BRD',
@@ -79,14 +79,14 @@ export async function generateStructured(prompt, options = {}) {
     };
   }
 
-  const ai = getClient();
+  const ai = getClient(apiKey);
   const response = await ai.models.generateContent({
     model,
     contents: prompt,
     config: {
       systemInstruction,
       temperature: options.temperature ?? 0.2,
-      maxOutputTokens: options.max_tokens || 4096,
+      maxOutputTokens: options.max_tokens || options.maxTokens || 4096,
       responseMimeType: 'application/json'
     }
   });

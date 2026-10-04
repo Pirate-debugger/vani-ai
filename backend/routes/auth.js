@@ -189,13 +189,15 @@ const requireAuth = (req, res, next) => {
 // POST /api/auth/set-key
 router.post('/set-key', requireAuth, async (req, res) => {
   const { key, provider = 'sarvam' } = req.body;
-  if (!key) return res.status(400).json({ error: 'Key required' });
+  if (!key || typeof key !== 'string' || !key.trim()) {
+    return res.status(400).json({ error: 'Valid API key is required', code: 'INVALID_INPUT' });
+  }
 
   const validProviders = ['sarvam', 'openai', 'gemini', 'tinyfish'];
   const targetProvider = validProviders.includes(provider.toLowerCase()) ? provider.toLowerCase() : 'sarvam';
   
   try {
-    const encryptedKey = encryptKey(key);
+    const encryptedKey = encryptKey(key.trim());
     await prisma.apiKey.upsert({
       where: {
         userId_provider: {
@@ -210,10 +212,21 @@ router.post('/set-key', requireAuth, async (req, res) => {
         encryptedKey
       }
     });
-    res.json({ success: true, message: `${targetProvider.toUpperCase()} API key saved securely.`, provider: targetProvider });
+
+    const trimmed = key.trim();
+    const masked = trimmed.length > 8
+      ? `${trimmed.substring(0, 4)}••••${trimmed.substring(trimmed.length - 4)}`
+      : '••••••••';
+
+    res.json({ 
+      success: true, 
+      message: `${targetProvider.toUpperCase()} key configured successfully.`, 
+      provider: targetProvider,
+      masked
+    });
   } catch (err) {
     console.error('Save key error:', err);
-    res.status(500).json({ error: 'Failed to save API key' });
+    res.status(500).json({ error: 'Failed to save API key securely', code: 'KEY_SAVE_FAILED' });
   }
 });
 
@@ -233,18 +246,46 @@ router.post('/clear-key', requireAuth, async (req, res) => {
     res.json({ success: true, provider: targetProvider });
   } catch (err) {
     console.error('Clear key error:', err);
-    res.status(500).json({ error: 'Failed to clear API key' });
+    res.status(500).json({ error: 'Failed to clear API key', code: 'KEY_CLEAR_FAILED' });
   }
 });
 
 // GET /api/auth/status
 router.get('/status', async (req, res) => {
   const user = req.user || req.session?.localUser;
+  
+  const mask = (key) => {
+    if (!key || typeof key !== 'string') return null;
+    const str = key.trim();
+    if (str.length <= 8) return '••••••••';
+    return `${str.substring(0, 4)}••••${str.substring(str.length - 4)}`;
+  };
+
   const providersStatus = {
-    sarvam: { configured: Boolean(process.env.SARVAM_API_KEY), source: process.env.SARVAM_API_KEY ? 'env' : 'none' },
-    openai: { configured: Boolean(process.env.OPENAI_API_KEY), source: process.env.OPENAI_API_KEY ? 'env' : 'none' },
-    gemini: { configured: Boolean(process.env.GEMINI_API_KEY), source: process.env.GEMINI_API_KEY ? 'env' : 'none' },
-    tinyfish: { configured: Boolean(process.env.TINYFISH_API_KEY), source: process.env.TINYFISH_API_KEY ? 'env' : 'none' }
+    sarvam: { 
+      status: process.env.SARVAM_API_KEY ? 'CONFIGURED' : 'NOT_CONFIGURED',
+      configured: Boolean(process.env.SARVAM_API_KEY), 
+      source: process.env.SARVAM_API_KEY ? 'env' : 'none',
+      masked: mask(process.env.SARVAM_API_KEY)
+    },
+    openai: { 
+      status: process.env.OPENAI_API_KEY ? 'CONFIGURED' : 'NOT_CONFIGURED',
+      configured: Boolean(process.env.OPENAI_API_KEY), 
+      source: process.env.OPENAI_API_KEY ? 'env' : 'none',
+      masked: mask(process.env.OPENAI_API_KEY)
+    },
+    gemini: { 
+      status: process.env.GEMINI_API_KEY ? 'CONFIGURED' : 'NOT_CONFIGURED',
+      configured: Boolean(process.env.GEMINI_API_KEY), 
+      source: process.env.GEMINI_API_KEY ? 'env' : 'none',
+      masked: mask(process.env.GEMINI_API_KEY)
+    },
+    tinyfish: { 
+      status: process.env.TINYFISH_API_KEY ? 'CONFIGURED' : 'NOT_CONFIGURED',
+      configured: Boolean(process.env.TINYFISH_API_KEY), 
+      source: process.env.TINYFISH_API_KEY ? 'env' : 'none',
+      masked: mask(process.env.TINYFISH_API_KEY)
+    }
   };
   
   if (user && user.id) {
@@ -254,7 +295,18 @@ router.get('/status', async (req, res) => {
       });
       for (const k of dbKeys) {
         if (providersStatus[k.provider]) {
-          providersStatus[k.provider] = { configured: true, source: 'db' };
+          let maskedVal = '••••••••';
+          try {
+            const dec = decryptKey(k.encryptedKey);
+            maskedVal = mask(dec);
+          } catch (e) {}
+
+          providersStatus[k.provider] = { 
+            status: 'CONFIGURED',
+            configured: true, 
+            source: 'db',
+            masked: maskedVal
+          };
         }
       }
     } catch (err) {

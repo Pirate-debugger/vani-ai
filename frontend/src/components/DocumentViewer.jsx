@@ -20,6 +20,7 @@ import {
 export default function DocumentViewer({ 
   document, 
   projectTasks = [], 
+  versions: propVersions = [],
   onExport, 
   onVersionHistory, 
   onConvertToPrd, 
@@ -28,6 +29,11 @@ export default function DocumentViewer({
 }) {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'requirements' | 'research' | 'tasks' | 'document' | 'versions'
   const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [fetchedVersions, setFetchedVersions] = useState([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [previewVersion, setPreviewVersion] = useState(null);
+  const [restoringId, setRestoringId] = useState(null);
+
 
   // Extract structured sections from markdown content
   const parsedSections = useMemo(() => {
@@ -114,6 +120,46 @@ export default function DocumentViewer({
       competitors: competitorText
     };
   }, [document?.content, document?.summary]);
+
+  const versionsList = useMemo(() => {
+    if (propVersions && propVersions.length > 0) return propVersions;
+    if (document?.versions && document.versions.length > 0) return document.versions;
+    return fetchedVersions;
+  }, [propVersions, document?.versions, fetchedVersions]);
+
+  React.useEffect(() => {
+    if (activeTab === 'versions' && document?.id && versionsList.length === 0) {
+      setVersionsLoading(true);
+      fetch(`/api/document/${document.id}/versions`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setFetchedVersions(data);
+        })
+        .catch(err => console.error('Failed to load document versions', err))
+        .finally(() => setVersionsLoading(false));
+    }
+  }, [activeTab, document?.id, versionsList.length]);
+
+  const handleRestore = async (version) => {
+    if (!version || !document?.id) return;
+    setRestoringId(version.id);
+    try {
+      if (onRestoreVersion) {
+        await onRestoreVersion(version);
+      } else {
+        await fetch(`/api/document/${document.id}/restore/${version.id}`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+        window.dispatchEvent(new Event('vani_document_created'));
+      }
+      setPreviewVersion(null);
+    } catch (err) {
+      console.error('Failed to restore version', err);
+    } finally {
+      setRestoringId(null);
+    }
+  };
 
   if (!document) {
     return (
@@ -484,6 +530,38 @@ export default function DocumentViewer({
                   <p className="text-xs">No web citations attached to this document. Real-time web research runs when asking Vani for competitor or market analysis.</p>
                 </div>
               )}
+
+              {/* Structured Evidence from Live Research */}
+              {document.metadata?.evidence && Array.isArray(document.metadata.evidence) && document.metadata.evidence.length > 0 && (
+                <div className="mt-6 space-y-3">
+                  <h4 className="text-xs font-bold text-cyber-cyan uppercase tracking-wider flex items-center gap-1.5">
+                    <ShieldCheck size={14} className="text-cyber-cyan" /> Grounded Evidence & Claims
+                  </h4>
+                  <div className="space-y-2.5">
+                    {document.metadata.evidence.map((ev, idx) => (
+                      <div key={idx} className="p-3.5 rounded-xl bg-white/[0.02] border border-white/10 text-xs">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-semibold text-white/95">{ev.claim}</span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                            {ev.confidence || 'high'} confidence
+                          </span>
+                        </div>
+                        <p className="text-white/60 mt-1.5 leading-relaxed">{ev.evidence}</p>
+                        {ev.source && (
+                          <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between text-[11px] text-white/40">
+                            <span className="truncate">Source: {ev.source}</span>
+                            {ev.url && (
+                              <a href={ev.url} target="_blank" rel="noopener noreferrer" className="text-cyber-cyan hover:underline flex items-center gap-1 shrink-0">
+                                View link <ExternalLink size={10} />
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -548,10 +626,90 @@ export default function DocumentViewer({
 
           {/* TAB 6: VERSIONS */}
           {activeTab === 'versions' && (
-            <div className="p-6 text-center text-white/50">
-              <History size={32} className="mx-auto mb-2 text-cyber-purple/50" />
-              <p className="text-sm font-semibold text-white/80">Version History</p>
-              <p className="text-xs text-white/40 mt-1">Use the version history button at the top right to view historical snapshots.</p>
+            <div className="space-y-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <History size={16} className="text-cyber-cyan" /> Version History & Snapshots
+                  </h3>
+                  <p className="text-xs text-white/40 mt-0.5">
+                    Review previous versions, inspect changes, and restore any historical snapshot.
+                  </p>
+                </div>
+                <span className="text-xs text-cyber-cyan font-mono bg-cyber-cyan/10 px-2.5 py-1 rounded-md border border-cyber-cyan/20">
+                  {versionsList.length} {versionsList.length === 1 ? 'version' : 'versions'}
+                </span>
+              </div>
+
+              {versionsLoading ? (
+                <div className="p-8 text-center text-white/40 animate-pulse text-xs">
+                  Loading version snapshots...
+                </div>
+              ) : versionsList.length === 0 ? (
+                <div className="p-8 text-center text-white/40 rounded-xl bg-white/[0.01] border border-white/5">
+                  <History size={32} className="mx-auto mb-2 opacity-30 text-cyber-cyan" />
+                  <p className="text-xs">No historical versions recorded yet. Updates and regenerations create version snapshots automatically.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  {/* Version List */}
+                  <div className="lg:col-span-1 space-y-2">
+                    {versionsList.map((ver, idx) => (
+                      <div
+                        key={ver.id || idx}
+                        onClick={() => setPreviewVersion(ver)}
+                        className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
+                          previewVersion?.id === ver.id
+                            ? 'bg-cyber-cyan/15 border-cyber-cyan/40 text-white shadow-lg'
+                            : 'bg-white/[0.02] border-white/5 text-white/70 hover:bg-white/[0.05] hover:text-white'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-bold text-xs text-cyber-cyan">
+                            {ver.versionName || `Version ${versionsList.length - idx}`}
+                          </span>
+                          <span className="text-[10px] text-white/30 font-mono">
+                            {ver.createdAt ? new Date(ver.createdAt).toLocaleDateString() : 'Initial'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-white/50 line-clamp-2">
+                          {ver.content ? ver.content.slice(0, 100) : 'Snapshot data'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Version Detail & Restore View */}
+                  <div className="lg:col-span-2 p-4 rounded-xl bg-white/[0.02] border border-white/10 flex flex-col justify-between min-h-[280px]">
+                    {previewVersion ? (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                          <div>
+                            <span className="font-bold text-sm text-white">{previewVersion.versionName}</span>
+                            <p className="text-[11px] text-white/40">Created {new Date(previewVersion.createdAt).toLocaleString()}</p>
+                          </div>
+                          <button
+                            onClick={() => handleRestore(previewVersion)}
+                            disabled={restoringId === previewVersion.id}
+                            className="px-3 py-1.5 bg-cyber-purple hover:bg-cyber-purple/90 text-white font-bold text-xs rounded-lg transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50"
+                          >
+                            <History size={13} />
+                            {restoringId === previewVersion.id ? 'Restoring...' : 'Restore This Version'}
+                          </button>
+                        </div>
+                        <div className="max-h-72 overflow-y-auto text-xs text-white/70 leading-relaxed font-mono bg-black/40 p-3 rounded-lg border border-white/5 custom-scrollbar whitespace-pre-wrap">
+                          {previewVersion.content}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full text-center p-6 text-white/40">
+                        <History size={28} className="mb-2 opacity-30 text-cyber-cyan" />
+                        <p className="text-xs">Select any version from the left to inspect its content or restore it as the active document.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

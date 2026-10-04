@@ -3,6 +3,7 @@ import axios from 'axios';
 import { useAuth, AuthProvider } from './context/AuthContext';
 import { ChatHistoryProvider, useChatHistory } from './context/ChatHistoryContext';
 import Sidebar from './components/Sidebar';
+import Workspace from './pages/Workspace';
 import Home from './pages/Home';
 import Chat from './pages/Chat';
 import Assistant from './pages/Assistant';
@@ -72,7 +73,7 @@ const AppInner = () => {
   const handleLoadSession = useCallback((sessionMessages, sessionLang, newSessionId) => {
     setMessages(sessionMessages || []);
     if (sessionLang) setCurrentLang(sessionLang);
-    navigate('/chat');
+    navigate('/');
     if (newSessionId && chatHistory.isLoggedIn) chatHistory.setCurrentSessionId(newSessionId);
   }, [chatHistory]);
 
@@ -93,11 +94,9 @@ const AppInner = () => {
       try {
         await axios.get('/api/health', { timeout: 3000 });
         setBackendOffline(false);
-        // Don't reset dismissOffline here — user may have dismissed it intentionally
       } catch {
-        // Only show banner again if the user hadn't dismissed it yet
         setBackendOffline(true);
-        setDismissOffline(false); // Reset dismiss so the new outage shows up
+        setDismissOffline(false);
       }
     };
     checkHealth();
@@ -141,13 +140,15 @@ const AppInner = () => {
     return () => window.removeEventListener('keydown', handler);
   }, [voiceRecorder]);
 
-  const onSubmitPrompt = async (promptText, agentType = null) => {
+  const onSubmitPrompt = async (promptText, agentType = null, projectId = null) => {
     try {
+      const activeProj = projectId || localStorage.getItem('vani_active_project_id') || undefined;
       const formattedHistory = messages.map(m => ({ role: m.role, content: m.content }));
       const payload = {
         prompt: promptText,
         messages: [...formattedHistory, { role: 'user', content: promptText }],
         agentType: agentType || undefined,
+        projectId: activeProj,
         language_code: currentLang,
         personality,
         history: formattedHistory,
@@ -162,12 +163,8 @@ const AppInner = () => {
       return response.data;
     } catch (error) {
       console.error('API submission failed:', error);
-      await new Promise(r => setTimeout(r, 800));
-      setIsSimulatorMode(true);
-      return {
-        response: `[Vani Assistant Offline]: I received: "${promptText}". Ensure the backend server is running on port 5000.`,
-        simulated: true
-      };
+      const errorMsg = error.response?.data?.error || error.message || 'AI generation failed';
+      throw new Error(errorMsg);
     }
   };
 
@@ -212,36 +209,24 @@ const AppInner = () => {
         {isSimulatorMode && <SimulatorBanner />}
 
         <Routes>
-          <Route path="/" element={<Navigate to="/home" />} />
-          <Route path="/home" element={
-            <Home
+          <Route path="/" element={
+            <Workspace
               currentLang={currentLang}
+              setCurrentLang={setCurrentLang}
               personality={personality}
               voiceSpeed={voiceSpeed}
               voiceRecorder={voiceRecorder}
               messages={messages}
               setMessages={setMessages}
-              onSubmitPrompt={onSubmitPrompt}
-              isSimulatorMode={isSimulatorMode}
-              accessibilityMode={accessibilityMode}
-              setActiveTab={(tab) => navigate(`/${tab}`)}
-              setPersonality={setPersonality}
-            />
-          } />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/project/:id" element={<Project />} />
-          <Route path="/chat" element={
-            <Chat
-              currentLang={currentLang}
-              voiceSpeed={voiceSpeed}
-              voiceRecorder={voiceRecorder}
-              messages={messages}
-              setMessages={setMessages}
-              onSubmitPrompt={onSubmitPrompt}
               autoSpeak={getAutoSpeak()}
               accessibilityMode={accessibilityMode}
             />
           } />
+          <Route path="/workspace" element={<Navigate to="/" replace />} />
+          <Route path="/chat" element={<Navigate to="/" replace />} />
+          <Route path="/home" element={<Navigate to="/" replace />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/project/:id" element={<Project />} />
           <Route path="/assistant" element={
             <Assistant
               currentLang={currentLang}
@@ -249,7 +234,7 @@ const AppInner = () => {
               voiceSpeed={voiceSpeed}
               voiceRecorder={voiceRecorder}
               onSubmitPrompt={onSubmitPrompt}
-              onEndSession={() => navigate('/home')}
+              onEndSession={() => navigate('/')}
               accessibilityMode={accessibilityMode}
             />
           } />

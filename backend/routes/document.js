@@ -201,6 +201,64 @@ router.delete('/:id', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/document/:id/versions
+// Fetch all versions of a document
+router.get('/:id/versions', requireAuth, async (req, res) => {
+  try {
+    const documentId = req.params.id;
+    const document = await verifyDocumentOwnership(documentId, req.authUser.id);
+    res.json(document.versions || []);
+  } catch (error) {
+    console.error('Fetch versions error:', error.message);
+    res.status(error.status || 500).json({
+      error: error.message || 'Failed to fetch document versions',
+      code: error.code || 'VERSION_FETCH_FAILED'
+    });
+  }
+});
+
+// POST /api/document/:id/restore/:versionId
+// Restore a specific historical version
+router.post('/:id/restore/:versionId', requireAuth, async (req, res) => {
+  try {
+    const { id: documentId, versionId } = req.params;
+    const document = await verifyDocumentOwnership(documentId, req.authUser.id);
+
+    const targetVersion = (document.versions || []).find(v => v.id === versionId);
+    if (!targetVersion) {
+      return res.status(404).json({ error: 'Target version not found', code: 'VERSION_NOT_FOUND' });
+    }
+
+    // Snapshot current state before restoring
+    const nextVerNumber = (document.versions?.length || 0) + 1;
+    await prisma.documentVersion.create({
+      data: {
+        documentId,
+        content: document.content,
+        metadata: document.metadata,
+        versionName: `v1.${nextVerNumber} (Pre-restore snapshot)`
+      }
+    });
+
+    // Restore content and metadata from the target version
+    const updated = await prisma.document.update({
+      where: { id: documentId },
+      data: {
+        content: targetVersion.content,
+        metadata: targetVersion.metadata || document.metadata
+      }
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Restore version error:', error.message);
+    res.status(error.status || 500).json({
+      error: error.message || 'Failed to restore document version',
+      code: error.code || 'RESTORE_VERSION_FAILED'
+    });
+  }
+});
+
 // POST /api/document/:id/versions
 // Create a new named version of a document
 router.post('/:id/versions', requireAuth, async (req, res) => {
@@ -214,6 +272,7 @@ router.post('/:id/versions', requireAuth, async (req, res) => {
       data: {
         documentId,
         content: existing.content,
+        metadata: existing.metadata,
         versionName: versionName ? versionName.trim() : `v1.${(existing.versions?.length || 0) + 1}`
       }
     });
@@ -229,3 +288,4 @@ router.post('/:id/versions', requireAuth, async (req, res) => {
 });
 
 export default router;
+

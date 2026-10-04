@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   Home, MessageSquare, Mic, Settings, Menu, X, Globe, Radio,
-  LogOut, User, Plus, Trash2, ChevronDown, ChevronRight, Clock, CheckCircle2
+  LogOut, User, Plus, Trash2, ChevronDown, ChevronRight, Clock, CheckCircle2,
+  Folder, FileText, Sparkles, Check, Layers
 } from 'lucide-react';
 import { useChatHistory } from '../context/ChatHistoryContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { CANONICAL_AGENTS } from '../config/canonicalAgents';
+import axios from 'axios';
 
 const LANGUAGES = [
   { code: 'hi-IN', label: 'हिन्दी', sub: 'Hindi' },
@@ -44,17 +47,62 @@ function relativeTime(isoStr) {
   return `${days}d ago`;
 }
 
-const Sidebar = ({ activeTab, currentLang, setCurrentLang, onNewChat, user, logout, accessibilityMode }) => {
-  const [collapsed, setCollapsed]   = useState(false);
+export default function Sidebar({
+  activeTab,
+  currentLang,
+  setCurrentLang,
+  onNewChat,
+  user,
+  logout,
+  accessibilityMode,
+  projects: propProjects = [],
+  selectedProjectId: propSelectedProjectId,
+  onSelectProject,
+  selectedAgent: propSelectedAgent,
+  onSelectAgent
+}) {
+  const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [projectsOpen, setProjectsOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(true);
-  const [langOpen, setLangOpen]     = useState(false);
+  const [agentsOpen, setAgentsOpen] = useState(true);
+  const [langOpen, setLangOpen] = useState(false);
 
-  const isGuest = user?.isGuest || false;
+  const [internalProjects, setInternalProjects] = useState([]);
+  const [activeProjectId, setActiveProjectId] = useState(() => propSelectedProjectId || localStorage.getItem('vani_active_project_id') || '');
+  const [activeAgentId, setActiveAgentId] = useState(() => propSelectedAgent || 'auto');
+
   const { sessions, currentSessionId, loadSession, deleteSession, startNewSession, isLoggedIn } = useChatHistory();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
+
+  // Fetch projects if not passed via props
+  useEffect(() => {
+    if (propProjects && propProjects.length > 0) {
+      setInternalProjects(propProjects);
+    } else {
+      axios.get('/api/projects', { withCredentials: true })
+        .then(res => {
+          if (Array.isArray(res.data)) {
+            setInternalProjects(res.data);
+            if (!activeProjectId && res.data.length > 0) {
+              setActiveProjectId(res.data[0].id);
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }, [propProjects]);
+
+  useEffect(() => {
+    if (propSelectedProjectId) setActiveProjectId(propSelectedProjectId);
+  }, [propSelectedProjectId]);
+
+  useEffect(() => {
+    if (propSelectedAgent) setActiveAgentId(propSelectedAgent);
+  }, [propSelectedAgent]);
 
   useEffect(() => {
     if (pendingDeleteId) {
@@ -79,56 +127,55 @@ const Sidebar = ({ activeTab, currentLang, setCurrentLang, onNewChat, user, logo
     }
   };
 
-  const menuItems = [
-    { id: 'home',      label: 'Home',           icon: Home },
-    { id: 'dashboard', label: 'Dashboard',      icon: Clock },
-    { id: 'chat',      label: 'Chat Assistant',  icon: MessageSquare },
-    { id: 'assistant', label: 'Voice Mode',      icon: Mic },
-    { id: 'why-vani',  label: 'Why Vani AI?',    icon: Globe },
-    { id: 'settings',  label: 'System Settings', icon: Settings },
-  ];
-
   const currentLangObj = LANGUAGES.find(l => l.code === currentLang) || LANGUAGES[0];
-
   const handleLangChange = (code) => { setCurrentLang(code); setLangOpen(false); };
 
   const handleSessionClick = (session) => {
     loadSession(session.id);
-    navigate('/chat');
+    navigate('/');
     setMobileOpen(false);
     if (onNewChat) onNewChat(session.messages, session.lang);
   };
 
-  const handleNewChat = () => {
+  const handleNewChatClick = () => {
     const id = startNewSession(currentLang);
-    navigate('/chat');
+    navigate('/');
     setMobileOpen(false);
     if (onNewChat) onNewChat([], currentLang, id);
   };
 
-  const handleNavClick = (id) => {
-    navigate(`/${id}`);
+  const handleProjectClick = (proj) => {
+    setActiveProjectId(proj.id);
+    localStorage.setItem('vani_active_project_id', proj.id);
+    if (onSelectProject) onSelectProject(proj.id);
+    navigate(`/?projectId=${proj.id}`);
     setMobileOpen(false);
   };
+
+  const handleAgentClick = (agent) => {
+    setActiveAgentId(agent.id);
+    if (onSelectAgent) onSelectAgent(agent.id);
+    navigate(`/?agent=${agent.id}`);
+    setMobileOpen(false);
+  };
+
+  const displayProjects = propProjects.length > 0 ? propProjects : internalProjects;
 
   return (
     <>
       {/* ── Mobile Top Bar ────────────────────────────────────────────────── */}
       <header className="md:hidden flex items-center justify-between px-4 py-3 glass-panel border-b border-white/5 sticky top-0 z-40">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" onClick={() => navigate('/')}>
           <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyber-purple to-cyber-cyan flex items-center justify-center shadow-glow-purple flex-shrink-0">
             <span className="font-extrabold text-sm text-cyber-bg">V</span>
           </div>
-          <span className="font-bold text-base bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">Vani AI</span>
+          <span className="font-bold text-base bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">VANI AI</span>
         </div>
 
-        {/* Mobile language quick-switcher */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => setLangOpen(o => !o)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 text-xs font-bold"
-            title="Change primary language"
-            aria-label="Change primary language"
           >
             <Globe size={12} className="text-cyber-cyan" />
             <span>{currentLangObj.label.slice(0, 6)}</span>
@@ -136,14 +183,11 @@ const Sidebar = ({ activeTab, currentLang, setCurrentLang, onNewChat, user, logo
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
             className="p-2 text-white/80 hover:text-white rounded-lg hover:bg-white/5 transition-all"
-            title="Toggle menu"
-            aria-label="Toggle menu"
           >
             {mobileOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
         </div>
 
-        {/* Mobile language dropdown */}
         {langOpen && (
           <div className="absolute top-full left-0 right-0 glass-panel !bg-[#110e20] border-b border-white/10 z-50 grid grid-cols-4 gap-1 p-3">
             {LANGUAGES.map(lang => (
@@ -163,29 +207,6 @@ const Sidebar = ({ activeTab, currentLang, setCurrentLang, onNewChat, user, logo
         )}
       </header>
 
-      {/* ── Mobile Bottom Navigation Bar ─────────────────────────────────── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 glass-panel border-t border-white/8 flex items-center justify-around px-2 py-2 safe-area-bottom">
-        {menuItems.map(({ id, label, icon: Icon }) => {
-          const isActive = activeTab === id;
-          return (
-            <button
-              key={id}
-              onClick={() => handleNavClick(id)}
-              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all min-w-[56px] ${
-                isActive
-                  ? 'text-cyber-cyan bg-cyber-cyan/10'
-                  : 'text-white/40 hover:text-white/70'
-              }`}
-            >
-              <Icon size={20} className={isActive ? 'text-cyber-cyan' : ''} />
-              <span className="text-[9px] font-bold tracking-wide truncate max-w-[52px]">
-                {id === 'assistant' ? 'Voice' : id === 'settings' ? 'Settings' : label}
-              </span>
-            </button>
-          );
-        })}
-      </nav>
-
       {/* ── Desktop Sidebar ───────────────────────────────────────────────── */}
       <aside className={`
         hidden md:flex flex-col glass-panel border-r border-white/5
@@ -193,78 +214,127 @@ const Sidebar = ({ activeTab, currentLang, setCurrentLang, onNewChat, user, logo
         ${collapsed ? 'w-20' : 'w-72'}
       `}>
         {/* Branding */}
-        <div className="p-5 flex items-center justify-between border-b border-white/5 flex-shrink-0">
-          <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-10 h-10 min-w-10 rounded-xl bg-gradient-to-tr from-cyber-purple to-cyber-cyan flex items-center justify-center shadow-glow-neon">
-              <Radio size={20} className="text-white animate-pulse" />
+        <div className="p-4 flex items-center justify-between border-b border-white/5 flex-shrink-0">
+          <div className="flex items-center gap-3 overflow-hidden cursor-pointer" onClick={() => navigate('/')}>
+            <div className="w-9 h-9 min-w-9 rounded-xl bg-gradient-to-tr from-cyber-purple to-cyber-cyan flex items-center justify-center shadow-glow-neon">
+              <Radio size={18} className="text-white animate-pulse" />
             </div>
             {!collapsed && (
               <div className="flex flex-col">
-                <span className="font-extrabold text-lg tracking-wider bg-gradient-to-r from-white via-white/90 to-cyber-cyan bg-clip-text text-transparent">VANI AI</span>
-                <span className="text-[10px] text-cyber-cyan font-semibold tracking-widest uppercase">Saaras-Bulbul v3</span>
+                <span className="font-extrabold text-base tracking-wider bg-gradient-to-r from-white via-white/90 to-cyber-cyan bg-clip-text text-transparent">VANI AI</span>
+                <span className="text-[10px] text-cyber-cyan font-semibold tracking-widest uppercase">Agentic Workspace</span>
               </div>
             )}
           </div>
         </div>
 
-        {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        {/* Scrollable Navigation / Content */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar p-3 space-y-4">
+          
+          {/* + New Chat Button */}
+          {!collapsed ? (
+            <button
+              onClick={handleNewChatClick}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-cyber-cyan text-cyber-bg font-extrabold text-xs shadow-glow-neon hover:bg-cyber-cyan/90 transition-all"
+            >
+              <Plus size={15} />
+              <span>New Conversation</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleNewChatClick}
+              className="w-full flex items-center justify-center p-2.5 rounded-xl bg-cyber-cyan text-cyber-bg shadow-glow-neon hover:bg-cyber-cyan/90 transition-all"
+              title="New Conversation"
+            >
+              <Plus size={16} />
+            </button>
+          )}
 
-          {/* Chat History */}
-          {isLoggedIn && !collapsed && (
-            <div className="border-b border-white/5">
+          {/* ── Section: Projects ─────────────────────────────────────────── */}
+          {!collapsed && (
+            <div className="space-y-1">
               <button
-                onClick={() => setHistoryOpen(h => !h)}
-                className="w-full flex items-center justify-between px-5 py-3 text-white/40 hover:text-white/70 transition-colors text-xs font-bold uppercase tracking-widest"
+                onClick={() => setProjectsOpen(!projectsOpen)}
+                className="w-full flex items-center justify-between px-2 py-1.5 text-white/40 hover:text-white/70 transition-colors text-[11px] font-bold uppercase tracking-wider"
               >
-                <div className="flex items-center gap-2">
-                  <Clock size={12} />
-                  <span>Recent Chats</span>
+                <div className="flex items-center gap-1.5">
+                  <Folder size={12} className="text-cyber-cyan" />
+                  <span>Projects</span>
+                  <span className="text-[10px] text-white/20 font-mono">({displayProjects.length})</span>
                 </div>
-                {historyOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                {projectsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              </button>
+
+              {projectsOpen && (
+                <div className="space-y-0.5 pl-1">
+                  {displayProjects.length === 0 ? (
+                    <p className="text-[10px] text-white/30 py-1 px-2 italic">No projects created yet</p>
+                  ) : (
+                    displayProjects.map(proj => (
+                      <button
+                        key={proj.id}
+                        onClick={() => handleProjectClick(proj)}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all flex items-center justify-between group ${
+                          activeProjectId === proj.id
+                            ? 'bg-cyber-cyan/15 text-cyber-cyan font-bold border border-cyber-cyan/30'
+                            : 'text-white/60 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        <span className="truncate">{proj.name}</span>
+                        {activeProjectId === proj.id && <span className="w-1.5 h-1.5 rounded-full bg-cyber-cyan" />}
+                      </button>
+                    ))
+                  )}
+
+                  <button
+                    onClick={() => navigate('/dashboard')}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-cyber-cyan hover:bg-cyber-cyan/10 transition-all flex items-center gap-1.5"
+                  >
+                    <Plus size={12} /> All Projects & Documents
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Section: Recent Chats ─────────────────────────────────────── */}
+          {!collapsed && isLoggedIn && (
+            <div className="space-y-1">
+              <button
+                onClick={() => setHistoryOpen(!historyOpen)}
+                className="w-full flex items-center justify-between px-2 py-1.5 text-white/40 hover:text-white/70 transition-colors text-[11px] font-bold uppercase tracking-wider"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Clock size={12} className="text-cyber-purple" />
+                  <span>Recent Chats</span>
+                  <span className="text-[10px] text-white/20 font-mono">({sessions.length})</span>
+                </div>
+                {historyOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               </button>
 
               {historyOpen && (
-                <div className="px-3 pb-3 space-y-1">
-                  <button
-                    onClick={handleNewChat}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-cyber-cyan/80 hover:text-cyber-cyan hover:bg-cyber-cyan/5 border border-dashed border-cyber-cyan/20 hover:border-cyber-cyan/40 transition-all text-xs font-semibold"
-                  >
-                    <Plus size={13} />
-                    New Chat
-                  </button>
-
+                <div className="space-y-0.5 pl-1">
                   {sessions.length === 0 ? (
-                    <p className="text-[10px] text-white/20 text-center py-3 font-medium">No conversations yet</p>
+                    <p className="text-[10px] text-white/30 py-1 px-2 italic">No conversations yet</p>
                   ) : (
-                    sessions.slice(0, 10).map(session => (
+                    sessions.slice(0, 8).map(session => (
                       <div
                         key={session.id}
-                        className={`group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all ${
-                          currentSessionId === session.id
-                            ? 'bg-cyber-cyan/10 border border-cyber-cyan/20'
-                            : 'hover:bg-white/5 border border-transparent'
-                        }`}
                         onClick={() => handleSessionClick(session)}
+                        className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer text-xs transition-all ${
+                          currentSessionId === session.id
+                            ? 'bg-cyber-purple/20 text-white border border-cyber-purple/30 font-semibold'
+                            : 'text-white/60 hover:text-white hover:bg-white/5'
+                        }`}
                       >
-                        <MessageSquare size={12} className={currentSessionId === session.id ? 'text-cyber-cyan' : 'text-white/30'} />
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-xs font-semibold truncate ${currentSessionId === session.id ? 'text-cyber-cyan' : 'text-white/70'}`}>
-                            {session.title}
-                          </p>
-                          <p className="text-[9px] text-white/25 font-medium">{relativeTime(session.createdAt)}</p>
-                        </div>
+                        <span className="truncate flex-1 pr-1">{session.title || 'Chat Session'}</span>
                         <button
                           onClick={(e) => handleDeleteClick(e, session.id)}
-                          className={`p-1 transition-all flex-shrink-0 ${
-                            pendingDeleteId === session.id
-                              ? 'opacity-100 text-red-400 bg-red-500/10 rounded'
-                              : 'opacity-0 group-hover:opacity-100 text-white/20 hover:text-red-400'
+                          className={`p-1 transition-all ${
+                            pendingDeleteId === session.id ? 'text-red-400 bg-red-500/10 rounded' : 'opacity-0 group-hover:opacity-100 text-white/20 hover:text-red-400'
                           }`}
-                          title={pendingDeleteId === session.id ? "Confirm delete" : "Delete session"}
-                          aria-label={pendingDeleteId === session.id ? "Confirm delete recent chat session" : "Delete recent chat session"}
                         >
-                          {pendingDeleteId === session.id ? <CheckCircle2 size={12} className="text-red-400" /> : <Trash2 size={11} />}
+                          {pendingDeleteId === session.id ? <CheckCircle2 size={11} className="text-red-400" /> : <Trash2 size={11} />}
                         </button>
                       </div>
                     ))
@@ -274,66 +344,34 @@ const Sidebar = ({ activeTab, currentLang, setCurrentLang, onNewChat, user, logo
             </div>
           )}
 
-          {/* Navigation */}
-          <nav className="py-4 px-3 space-y-1">
-            {menuItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => handleNavClick(item.id)}
-                  className={`
-                    w-full flex items-center gap-3.5 px-3.5 py-3 rounded-xl transition-all duration-200 group
-                    ${isActive
-                      ? 'bg-gradient-to-r from-cyber-purple/20 to-cyber-cyan/10 border border-cyber-cyan/15 text-white'
-                      : 'text-white/50 hover:text-white hover:bg-white/5 border border-transparent'}
-                  `}
-                >
-                  <Icon size={18} className={`
-                    transition-transform duration-200 group-hover:scale-110 flex-shrink-0
-                    ${isActive ? 'text-cyber-cyan' : 'text-white/50 group-hover:text-white'}
-                  `} />
-                  {!collapsed && <span className={`${accessibilityMode ? 'text-base' : 'text-sm'} font-semibold tracking-wide`}>{item.label}</span>}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        {/* Bottom section */}
-        <div className="flex-shrink-0 border-t border-white/5 p-4 space-y-3">
-
-          {/* Language Selector */}
+          {/* ── Section: Specialized Agents ────────────────────────────────── */}
           {!collapsed && (
-            <div className="relative">
+            <div className="space-y-1">
               <button
-                onClick={() => setLangOpen(o => !o)}
-                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/8 border border-white/8 hover:border-cyber-cyan/20 transition-all"
+                onClick={() => setAgentsOpen(!agentsOpen)}
+                className="w-full flex items-center justify-between px-2 py-1.5 text-white/40 hover:text-white/70 transition-colors text-[11px] font-bold uppercase tracking-wider"
               >
-                <Globe size={15} className="text-cyber-cyan flex-shrink-0" />
-                <div className="flex-1 text-left min-w-0">
-                  <p className="text-[10px] text-white/35 font-semibold uppercase tracking-wider leading-none mb-0.5">Language</p>
-                  <p className="text-xs text-white/90 font-bold truncate">
-                    {currentLangObj.label} · {currentLangObj.sub}
-                  </p>
+                <div className="flex items-center gap-1.5">
+                  <Sparkles size={12} className="text-emerald-400" />
+                  <span>Agents</span>
                 </div>
-                <ChevronDown size={13} className={`text-white/30 transition-transform flex-shrink-0 ${langOpen ? 'rotate-180' : ''}`} />
+                {agentsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               </button>
 
-              {langOpen && (
-                <div className="absolute bottom-full left-0 right-0 mb-2 glass-panel !bg-[#110e20] border border-white/10 rounded-xl overflow-y-auto overscroll-contain max-h-64 shadow-xl z-50" style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}>
-                  {LANGUAGES.map(lang => (
+              {agentsOpen && (
+                <div className="space-y-0.5 pl-1">
+                  {CANONICAL_AGENTS.slice(0, 8).map(agent => (
                     <button
-                      key={lang.code}
-                      onClick={() => handleLangChange(lang.code)}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-white/8 transition-colors ${
-                        currentLang === lang.code ? 'bg-cyber-cyan/10 text-cyber-cyan' : 'text-white/70 hover:text-white'
+                      key={agent.id}
+                      onClick={() => handleAgentClick(agent)}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-2 ${
+                        activeAgentId === agent.id
+                          ? 'bg-emerald-500/15 text-emerald-300 font-bold border border-emerald-500/30'
+                          : 'text-white/60 hover:text-white hover:bg-white/5'
                       }`}
                     >
-                      <span className="text-sm font-bold w-10 flex-shrink-0">{lang.label}</span>
-                      <span className="text-xs text-white/40">{lang.sub}</span>
-                      {currentLang === lang.code && <span className="ml-auto text-cyber-cyan text-xs">✓</span>}
+                      <span className="text-xs leading-none">{agent.icon}</span>
+                      <span className="truncate">{agent.name}</span>
                     </button>
                   ))}
                 </div>
@@ -341,133 +379,147 @@ const Sidebar = ({ activeTab, currentLang, setCurrentLang, onNewChat, user, logo
             </div>
           )}
 
-          {/* User Info */}
+          {/* ── Standard Navigation Links ─────────────────────────────────── */}
+          <div className="border-t border-white/5 pt-2 space-y-0.5">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                location.pathname === '/dashboard' ? 'bg-white/10 text-white' : 'text-white/50 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Layers size={14} className="text-indigo-400" />
+              {!collapsed && <span>Documents & Tasks</span>}
+            </button>
+
+            <button
+              onClick={() => navigate('/settings')}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                location.pathname === '/settings' ? 'bg-white/10 text-white' : 'text-white/50 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Settings size={14} className="text-cyber-cyan" />
+              {!collapsed && <span>Settings & API Keys</span>}
+            </button>
+          </div>
+        </div>
+
+        {/* ── Bottom Section: Language & User ───────────────────────────────── */}
+        <div className="flex-shrink-0 border-t border-white/5 p-3 space-y-2">
           {!collapsed && (
-            <div className="glass-panel bg-white/3 rounded-xl p-3 border border-white/5">
-              {isLoggedIn ? (
-                <div className="flex items-center gap-2.5">
-                  {user?.avatar ? (
-                    <img src={user.avatar} alt={user.name} className="w-8 h-8 min-w-8 rounded-lg border border-cyber-cyan/20 object-cover" onError={(e) => { e.target.style.display = 'none'; }} />
-                  ) : (
-                    <div className="w-8 h-8 min-w-8 rounded-lg bg-gradient-to-tr from-cyber-purple/40 to-cyber-cyan/20 border border-cyber-cyan/20 flex items-center justify-center text-cyber-cyan font-black text-xs">
-                      {user?.name?.charAt(0)?.toUpperCase() || 'U'}
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-white font-bold truncate">{user.name}</p>
-                    <p className="text-[10px] text-white/30 truncate">{user.email}</p>
-                  </div>
-                  <button onClick={logout} title="Sign out" aria-label="Sign out" className="p-1.5 text-white/25 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all flex-shrink-0">
-                    <LogOut size={14} />
-                  </button>
+            <div className="relative">
+              <button
+                onClick={() => setLangOpen(!langOpen)}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-white/5 hover:bg-white/8 border border-white/8 transition-all text-xs"
+              >
+                <div className="flex items-center gap-2 truncate">
+                  <Globe size={13} className="text-cyber-cyan" />
+                  <span className="font-semibold text-white/80 truncate">{currentLangObj.label}</span>
                 </div>
-              ) : (
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 min-w-8 rounded-lg bg-white/8 border border-white/10 flex items-center justify-center text-white/30">
-                    <User size={14} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-white/60 font-semibold">Guest Mode</p>
-                    <p className="text-[10px] text-white/25">History not saved</p>
-                  </div>
-                  <button onClick={logout} title="Go to login" aria-label="Sign in to save history" className="text-[10px] text-cyber-cyan hover:text-white border border-cyber-cyan/20 hover:border-cyber-cyan/60 px-2 py-1 rounded-lg font-bold transition-all flex-shrink-0">
-                    Sign In
-                  </button>
+                <ChevronDown size={11} className="text-white/40" />
+              </button>
+
+              {langOpen && (
+                <div className="absolute bottom-full left-0 right-0 mb-1 glass-panel !bg-[#0e0a1f] border border-white/10 rounded-xl overflow-y-auto max-h-56 shadow-2xl z-50 p-1 custom-scrollbar">
+                  {LANGUAGES.map(lang => (
+                    <button
+                      key={lang.code}
+                      onClick={() => handleLangChange(lang.code)}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 text-left rounded-lg text-xs ${
+                        currentLang === lang.code ? 'bg-cyber-cyan/15 text-cyber-cyan font-bold' : 'text-white/70 hover:bg-white/5'
+                      }`}
+                    >
+                      <span>{lang.label}</span>
+                      <span className="text-[10px] text-white/30">{lang.sub}</span>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
           )}
 
-          {/* Collapse button */}
+          {/* User Status */}
+          {!collapsed && (
+            <div className="flex items-center justify-between p-2 rounded-xl bg-white/[0.02] border border-white/5">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-cyber-purple/20 border border-cyber-purple/30 flex items-center justify-center text-xs font-bold text-cyber-neonPurple">
+                  {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+                </div>
+                <div className="truncate">
+                  <p className="text-xs font-bold text-white truncate">{user?.name || 'Local User'}</p>
+                  <p className="text-[10px] text-white/30 truncate">{user?.email || 'Logged in'}</p>
+                </div>
+              </div>
+              <button
+                onClick={logout}
+                className="p-1 text-white/30 hover:text-rose-400 rounded transition-colors"
+                title="Log out"
+              >
+                <LogOut size={13} />
+              </button>
+            </div>
+          )}
+
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="w-full flex items-center justify-center py-2 border border-white/5 rounded-xl text-white/30 hover:text-white hover:border-white/15 transition-all text-xs font-bold uppercase tracking-wider"
+            className="w-full py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-white/30 hover:text-white transition-colors"
           >
             {collapsed ? '→' : '← Collapse'}
           </button>
         </div>
       </aside>
 
-      {/* Mobile Drawer Sidebar (full panel for chat history) */}
+      {/* ── Mobile Drawer ─────────────────────────────────────────────────── */}
       <aside className={`
-        md:hidden fixed top-0 left-0 bottom-0 w-4/5 max-w-[320px] z-50
-        flex flex-col glass-panel border-r border-white/8
+        md:hidden fixed top-0 left-0 bottom-0 w-4/5 max-w-[300px] z-50
+        flex flex-col glass-panel !bg-[#0b0818] border-r border-white/10
         transition-transform duration-300 ease-in-out
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-        <div className="p-4 flex items-center justify-between border-b border-white/5 flex-shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyber-purple to-cyber-cyan flex items-center justify-center shadow-glow-neon">
-              <Radio size={16} className="text-white animate-pulse" />
-            </div>
-            <div>
-              <p className="font-extrabold text-sm text-white">VANI AI</p>
-              <p className="text-[9px] text-cyber-cyan font-bold tracking-widest uppercase">Saaras-Bulbul v3</p>
-            </div>
-          </div>
-          <button onClick={() => setMobileOpen(false)} className="p-2 text-white/50 hover:text-white" title="Close menu" aria-label="Close menu">
-            <X size={20} />
+        <div className="p-4 flex items-center justify-between border-b border-white/10">
+          <span className="font-bold text-white text-sm">VANI AI Workspace</span>
+          <button onClick={() => setMobileOpen(false)} className="text-white/50 hover:text-white">
+            <X size={18} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {/* Mobile Chat History */}
-          {isLoggedIn && (
-            <div className="border-b border-white/5 px-3 py-3 space-y-1">
-              <p className="text-[10px] text-white/30 font-bold uppercase tracking-wider px-2 mb-2">Recent Chats</p>
-              <button onClick={handleNewChat} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-cyber-cyan/80 hover:bg-cyber-cyan/5 border border-dashed border-cyber-cyan/20 transition-all text-xs font-semibold">
-                <Plus size={12} /> New Chat
-              </button>
-              {sessions.slice(0, 8).map(session => (
-                <div key={session.id} className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-white/5 border border-transparent transition-all" onClick={() => handleSessionClick(session)}>
-                  <MessageSquare size={11} className="text-white/30 flex-shrink-0" />
-                  <p className="text-xs text-white/60 truncate flex-1">{session.title}</p>
-                </div>
-              ))}
-            </div>
-          )}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+          <button
+            onClick={handleNewChatClick}
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-cyber-cyan text-cyber-bg font-bold text-xs shadow-md"
+          >
+            <Plus size={14} /> New Conversation
+          </button>
 
-          {/* Mobile Nav */}
-          <nav className="py-3 px-3 space-y-1">
-            {menuItems.map(({ id, label, icon: Icon }) => (
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold uppercase text-white/40 tracking-wider">Projects</span>
+            {displayProjects.map(proj => (
               <button
-                key={id}
-                onClick={() => handleNavClick(id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all group ${
-                  activeTab === id ? 'bg-cyber-purple/20 text-cyber-cyan shadow-glow-cyan/10 border border-cyber-purple/30' : 'text-white/60 hover:bg-white/5 hover:text-white border border-transparent'
+                key={proj.id}
+                onClick={() => handleProjectClick(proj)}
+                className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs ${
+                  activeProjectId === proj.id ? 'bg-cyber-cyan/20 text-cyber-cyan font-bold' : 'text-white/70 hover:bg-white/5'
                 }`}
               >
-                <Icon size={16} className={activeTab === id ? 'text-cyber-cyan' : 'text-white/40'} />
-                <span className="font-semibold text-sm">{label}</span>
+                {proj.name}
               </button>
             ))}
-          </nav>
-        </div>
+          </div>
 
-        {/* Mobile user strip */}
-        <div className="p-3 border-t border-white/5 flex-shrink-0">
-          {isLoggedIn ? (
-            <div className="flex items-center gap-2.5 px-3 py-2 bg-white/5 rounded-xl">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-cyber-purple/40 to-cyber-cyan/20 flex items-center justify-center text-cyber-cyan font-black text-xs">
-                {user?.name?.charAt(0)?.toUpperCase() || 'U'}
-              </div>
-              <p className="text-xs text-white/70 font-semibold flex-1 truncate">{user?.name}</p>
-              <button onClick={logout} className="p-1.5 text-white/30 hover:text-red-400 transition-colors" title="Sign out" aria-label="Sign out"><LogOut size={13} /></button>
-            </div>
-          ) : (
-            <button onClick={() => { logout(); setMobileOpen(false); }} className="w-full py-2.5 bg-cyber-cyan/10 border border-cyber-cyan/20 rounded-xl text-cyber-cyan text-xs font-bold">
-              Sign In to Save History
-            </button>
-          )}
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold uppercase text-white/40 tracking-wider">Agents</span>
+            {CANONICAL_AGENTS.slice(0, 7).map(agent => (
+              <button
+                key={agent.id}
+                onClick={() => handleAgentClick(agent)}
+                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-white/70 hover:bg-white/5 flex items-center gap-2"
+              >
+                <span>{agent.icon}</span>
+                <span>{agent.name}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </aside>
-
-      {/* Mobile backdrop */}
-      {mobileOpen && (
-        <div onClick={() => setMobileOpen(false)} className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />
-      )}
     </>
   );
-};
-
-export default Sidebar;
+}

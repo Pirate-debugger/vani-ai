@@ -3,7 +3,7 @@ import FormData from 'form-data';
 
 const SARVAM_BASE_URL = 'https://api.sarvam.ai';
 
-// Modern Supported Sarvam Models (Phase 3)
+// Modern Supported Sarvam Models
 export const SARVAM_MODELS = {
   STT: process.env.SARVAM_STT_MODEL || 'saaras:v4',
   TTS: process.env.SARVAM_TTS_MODEL || 'bulbul:v3',
@@ -20,8 +20,9 @@ export const SUPPORTED_LANGUAGES = [
 /**
  * Check if Sarvam API is configured
  */
-export function isSarvamConfigured() {
-  return Boolean(process.env.SARVAM_API_KEY && process.env.SARVAM_API_KEY.trim() !== '');
+export function isSarvamConfigured(overrideKey) {
+  const key = overrideKey || process.env.SARVAM_API_KEY;
+  return Boolean(key && key.trim() !== '');
 }
 
 /**
@@ -30,8 +31,9 @@ export function isSarvamConfigured() {
 export async function transcribeAudio(audioBuffer, options = {}) {
   const languageCode = options.languageCode || 'hi-IN';
   const model = options.model || SARVAM_MODELS.STT;
+  const apiKey = options.apiKey || options.sarvamKey || process.env.SARVAM_API_KEY;
 
-  if (!isSarvamConfigured()) {
+  if (!isSarvamConfigured(apiKey)) {
     console.log(`[Sarvam STT Simulator] Transcribing buffer (${audioBuffer ? audioBuffer.length : 0} bytes) in ${languageCode}`);
     return {
       transcript: 'Vani, student PG finder startup ke liye detailed BRD banao aur current competitors research karo.',
@@ -44,7 +46,7 @@ export async function transcribeAudio(audioBuffer, options = {}) {
     const formData = new FormData();
     formData.append('file', audioBuffer, {
       filename: 'audio.wav',
-      contentType: 'audio/wav'
+      contentType: options.contentType || 'audio/wav'
     });
     formData.append('model', model);
     if (languageCode && languageCode !== 'auto') {
@@ -53,7 +55,7 @@ export async function transcribeAudio(audioBuffer, options = {}) {
 
     const response = await axios.post(`${SARVAM_BASE_URL}/speech-to-text`, formData, {
       headers: {
-        'api-subscription-key': process.env.SARVAM_API_KEY,
+        'api-subscription-key': apiKey,
         ...formData.getHeaders()
       },
       timeout: 25000
@@ -74,7 +76,7 @@ export async function transcribeAudio(audioBuffer, options = {}) {
  * Text to Speech (Bulbul v3)
  */
 export async function synthesizeSpeech(text, options = {}) {
-  const targetLanguage = options.targetLanguage || 'hi-IN';
+  const targetLanguage = options.targetLanguage || options.language_code || 'hi-IN';
   let defaultSpeaker = 'priya';
   if (targetLanguage.startsWith('ta')) defaultSpeaker = 'kavitha';
   else if (targetLanguage.startsWith('mr')) defaultSpeaker = 'ritu';
@@ -85,10 +87,11 @@ export async function synthesizeSpeech(text, options = {}) {
   ]);
   const requestedSpeaker = options.speaker?.toLowerCase();
   const speaker = (requestedSpeaker && VALID_BULBUL_SPEAKERS.has(requestedSpeaker)) ? requestedSpeaker : defaultSpeaker;
-  const speechSampleRate = options.speechSampleRate || 8000;
+  const speechSampleRate = options.speechSampleRate || 22050;
   const model = options.model || SARVAM_MODELS.TTS;
+  const apiKey = options.apiKey || options.sarvamKey || process.env.SARVAM_API_KEY;
 
-  if (!isSarvamConfigured()) {
+  if (!isSarvamConfigured(apiKey)) {
     console.log(`[Sarvam TTS Simulator] Synthesizing speech for "${text.slice(0, 40)}..." in ${targetLanguage}`);
     return {
       audioBase64: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=',
@@ -106,7 +109,7 @@ export async function synthesizeSpeech(text, options = {}) {
       model: model
     }, {
       headers: {
-        'api-subscription-key': process.env.SARVAM_API_KEY,
+        'api-subscription-key': apiKey,
         'Content-Type': 'application/json'
       },
       timeout: 20000
@@ -127,11 +130,12 @@ export async function synthesizeSpeech(text, options = {}) {
  * Translation (Mayura v1)
  */
 export async function translateText(text, options = {}) {
-  const sourceLang = options.sourceLanguage || 'auto';
-  const targetLang = options.targetLanguage || 'hi-IN';
+  const sourceLang = options.sourceLanguage || options.source_language_code || 'auto';
+  const targetLang = options.targetLanguage || options.target_language_code || 'hi-IN';
   const model = options.model || SARVAM_MODELS.TRANSLATION;
+  const apiKey = options.apiKey || options.sarvamKey || process.env.SARVAM_API_KEY;
 
-  if (!isSarvamConfigured()) {
+  if (!isSarvamConfigured(apiKey)) {
     console.log(`[Sarvam Translation Simulator] Translating from ${sourceLang} to ${targetLang}`);
     return {
       translatedText: text,
@@ -146,10 +150,11 @@ export async function translateText(text, options = {}) {
       input: text,
       source_language_code: sourceLang,
       target_language_code: targetLang,
-      model: model
+      model: model,
+      mode: options.mode || 'formal'
     }, {
       headers: {
-        'api-subscription-key': process.env.SARVAM_API_KEY,
+        'api-subscription-key': apiKey,
         'Content-Type': 'application/json'
       },
       timeout: 15000
@@ -172,8 +177,9 @@ export async function translateText(text, options = {}) {
  */
 export async function chatCompletion(messages, options = {}) {
   const model = options.model || (options.isReasoning ? SARVAM_MODELS.LLM : SARVAM_MODELS.CONVERSATIONS);
+  const apiKey = options.apiKey || options.sarvamKey || process.env.SARVAM_API_KEY;
 
-  if (!isSarvamConfigured()) {
+  if (!isSarvamConfigured(apiKey)) {
     return {
       text: 'Namaste! Main Vani AI hoon. Aapki startup aur business requirements mein kaise madad kar sakti hoon?',
       simulated: true,
@@ -186,11 +192,11 @@ export async function chatCompletion(messages, options = {}) {
       model: model,
       messages: messages,
       temperature: options.temperature || 0.3,
-      max_tokens: options.max_tokens || 800
+      max_tokens: options.max_tokens || options.maxTokens || 800
     }, {
       headers: {
-        'api-subscription-key': process.env.SARVAM_API_KEY,
-        'Authorization': `Bearer ${process.env.SARVAM_API_KEY}`,
+        'api-subscription-key': apiKey,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
       timeout: 30000

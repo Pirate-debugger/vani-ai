@@ -135,45 +135,81 @@ const Settings = ({
     localStorage.setItem('vani_theme', theme);
   }, [theme]);
 
-  // Check API key status
+  // Multi-provider status state
+  const [providerStatuses, setProviderStatuses] = useState({
+    sarvam: { configured: false, source: 'none', masked: '' },
+    gemini: { configured: false, source: 'none', masked: '' },
+    openai: { configured: false, source: 'none', masked: '' },
+    tinyfish: { configured: false, source: 'none', masked: '' }
+  });
+  const [keyInputs, setKeyInputs] = useState({
+    sarvam: '',
+    gemini: '',
+    openai: '',
+    tinyfish: ''
+  });
+  const [verifyingProvider, setVerifyingProvider] = useState(null);
+
+  const fetchAuthStatus = async () => {
+    try {
+      const res = await fetch('/api/auth/status', { credentials: 'include' });
+      const data = await res.json();
+      if (data?.keys) {
+        setProviderStatuses(data.keys);
+      }
+      setApiStatus(data?.source || (data?.hasKey ? 'configured' : 'none'));
+    } catch (err) {
+      console.error('Failed to fetch auth status:', err);
+    }
+  };
+
   useEffect(() => {
-    fetch('/api/auth/status', { credentials: 'include' })
-      .then(r => r.json())
-      .then(d => setApiStatus(d.source))
-      .catch(() => {});
+    fetchAuthStatus();
   }, []);
 
-  const [isVerifyingKey, setIsVerifyingKey] = useState(false);
+  const handleSaveProviderKey = async (provider) => {
+    const val = (keyInputs[provider] || '').trim();
+    if (!val) return;
 
-  const handleSaveApiKey = async (e) => {
-    e.preventDefault();
-    if (!apiKey.trim()) return;
-    
-    setIsVerifyingKey(true);
-    
-    // Simulate live check delay
-    await new Promise(r => setTimeout(r, 1000));
-    
+    setVerifyingProvider(provider);
     try {
       const res = await fetch('/api/auth/set-key', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ key: apiKey })
+        body: JSON.stringify({ provider, apiKey: val })
       });
-      
-      if (!res.ok) throw new Error('Invalid key');
-      
-      setApiStatus('session');
+
+      if (!res.ok) throw new Error('Failed to set key');
+
+      setKeyInputs(prev => ({ ...prev, [provider]: '' }));
+      await fetchAuthStatus();
       showSaved('api');
       celebrate();
     } catch (err) {
-      console.error('Failed to save API key:', err);
-      alert("Verification failed: Invalid API Key.");
+      console.error(`Failed to save key for ${provider}:`, err);
+      alert(`Failed to save API key for ${provider.toUpperCase()}`);
     } finally {
-      setIsVerifyingKey(false);
+      setVerifyingProvider(null);
     }
   };
+
+  const handleClearProviderKey = async (provider) => {
+    if (!confirm(`Remove configured ${provider.toUpperCase()} API key?`)) return;
+    try {
+      await fetch('/api/auth/clear-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ provider })
+      });
+      await fetchAuthStatus();
+      showSaved('api');
+    } catch (err) {
+      console.error(`Failed to clear key for ${provider}:`, err);
+    }
+  };
+
 
   const handleSaveLanguage = () => {
     localStorage.setItem('vani_secondary_lang', secondaryLang);
@@ -395,48 +431,107 @@ const Settings = ({
     api: (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-extrabold text-white">API Keys</h3>
+          <div>
+            <h3 className="text-base font-extrabold text-white">AI Provider Keys</h3>
+            <p className="text-xs text-white/40 mt-0.5">Manage credentials for Indian Voice, Reasoning, Coding, and Web Search engines.</p>
+          </div>
           <SavedBadge show={saved.api} />
         </div>
 
-        {/* Key status */}
-        <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-semibold ${
-          apiStatus === 'none' ? 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400'
-          : 'bg-green-500/10 border-green-500/20 text-green-400'}`}>
-          <span className={`w-2 h-2 rounded-full ${apiStatus === 'none' ? 'bg-yellow-400' : 'bg-green-400'} animate-pulse`} />
-          {apiStatus === 'none'
-            ? '⚠ Simulator Mode — No API key configured'
-            : apiStatus === 'session'
-            ? '✓ Session key active (Sarvam AI connected)'
-            : '✓ Environment key active'}
+        <div className="space-y-4">
+          {[
+            {
+              id: 'sarvam',
+              name: 'Sarvam AI',
+              badge: 'Indian Voice & Indic AI',
+              desc: 'Powers Saaras v4 STT, Bulbul v3 TTS, and Mayura v1 translation.',
+              placeholder: 'Insert Sarvam API subscription key...'
+            },
+            {
+              id: 'gemini',
+              name: 'Google Gemini',
+              badge: 'BRD & Research Synthesis',
+              desc: 'Powers Enterprise BRD creation, PRD structuring, and research reasoning.',
+              placeholder: 'Insert Google AI Studio Gemini key...'
+            },
+            {
+              id: 'openai',
+              name: 'OpenAI',
+              badge: 'Technical & Architecture',
+              desc: 'Powers GPT-4o technical architecture, system design, and coding agent tasks.',
+              placeholder: 'Insert OpenAI API key (sk-...)...'
+            },
+            {
+              id: 'tinyfish',
+              name: 'TinyFish Web Agent',
+              badge: 'Live Research & Fetch',
+              desc: 'Autonomous multi-step live web search, competitor analysis, and page fetch.',
+              placeholder: 'Insert TinyFish API key...'
+            }
+          ].map(p => {
+            const status = providerStatuses[p.id] || { configured: false, source: 'none', masked: '' };
+            const isSaving = verifyingProvider === p.id;
+            return (
+              <div key={p.id} className="glass-panel p-4 rounded-xl border border-white/10 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm text-white">{p.name}</span>
+                      <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyber-purple/20 text-cyber-purple border border-cyber-purple/30">
+                        {p.badge}
+                      </span>
+                    </div>
+                    <p className="text-xs text-white/40 mt-0.5">{p.desc}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 ${
+                      status.configured
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                        : 'bg-white/5 text-white/40 border-white/10'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${status.configured ? 'bg-emerald-400 animate-pulse' : 'bg-white/30'}`} />
+                      {status.configured ? `Configured (${status.source})` : 'Not configured'}
+                    </span>
+                    {status.masked && (
+                      <span className="text-[11px] font-mono text-white/50 bg-black/40 px-2 py-0.5 rounded border border-white/5">
+                        {status.masked}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="password"
+                    value={keyInputs[p.id] || ''}
+                    onChange={e => setKeyInputs({ ...keyInputs, [p.id]: e.target.value })}
+                    placeholder={status.configured ? 'Replace existing key...' : p.placeholder}
+                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder-white/20 focus:outline-none focus:border-cyber-cyan/30 transition-all font-mono"
+                  />
+                  <button
+                    type="button"
+                    disabled={isSaving || !keyInputs[p.id]?.trim()}
+                    onClick={() => handleSaveProviderKey(p.id)}
+                    className="px-3 py-2 btn-glow text-white text-xs font-bold rounded-xl disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
+                  >
+                    {isSaving ? <div className="w-3.5 h-3.5 border-2 border-cyber-cyan border-t-transparent rounded-full animate-spin" /> : <Key size={13} />}
+                    {isSaving ? 'Saving...' : 'Save Key'}
+                  </button>
+                  {status.configured && (
+                    <button
+                      type="button"
+                      onClick={() => handleClearProviderKey(p.id)}
+                      className="p-2 text-white/30 hover:text-rose-400 bg-white/5 hover:bg-rose-500/10 rounded-xl border border-white/5 hover:border-rose-500/20 transition-all shrink-0"
+                      title="Clear configured key"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
-
-        <p className="text-xs text-white/40 leading-relaxed font-medium">
-          By default, Vani AI runs in Simulator Mode with local Web Speech Synthesis. Insert your Sarvam API key to unlock real multilingual AI powered by Saaras v3, Bulbul v2, and sarvam-105B.
-        </p>
-
-        <form onSubmit={handleSaveApiKey} className="space-y-3">
-          <div>
-            <label className="block text-xs text-white/40 font-bold uppercase tracking-wider mb-1.5">Sarvam AI Subscription Key</label>
-            <input
-              id="settings-api-key"
-              name="apiKey"
-              type="password"
-              value={apiKey}
-              onChange={e => setApiKey(e.target.value)}
-              placeholder="Insert api-subscription-key..."
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-cyber-cyan/30 transition-all"
-            />
-          </div>
-          <button type="submit"
-            disabled={isVerifyingKey}
-            className={`w-full py-3 rounded-xl text-sm font-bold cursor-pointer transition-all flex items-center justify-center gap-2 ${
-              isVerifyingKey ? 'bg-cyber-cyan/20 text-cyber-cyan cursor-not-allowed' : 'btn-glow text-white'
-            }`}>
-            {isVerifyingKey ? <div className="w-4 h-4 border-2 border-cyber-cyan border-t-transparent rounded-full animate-spin" /> : <Key size={15} />}
-            {isVerifyingKey ? 'Verifying Key Live...' : 'Save & Activate Key'}
-          </button>
-        </form>
       </div>
     ),
 

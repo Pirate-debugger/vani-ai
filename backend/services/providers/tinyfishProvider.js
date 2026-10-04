@@ -1,14 +1,13 @@
-import { TinyFish } from '@tiny-fish/sdk';
+import { 
+  searchWeb as coreSearchWeb, 
+  fetchWeb as coreFetchWeb, 
+  runWebAgent as coreRunWebAgent, 
+  executeResearchPipeline,
+  isTinyFishConfigured as coreIsConfigured 
+} from '../tinyfish.js';
 
-export function isTinyFishConfigured() {
-  return Boolean(process.env.TINYFISH_API_KEY && process.env.TINYFISH_API_KEY.trim() !== '');
-}
-
-function getClient() {
-  if (!isTinyFishConfigured()) return null;
-  return new TinyFish({
-    apiKey: process.env.TINYFISH_API_KEY
-  });
+export function isTinyFishConfigured(overrideKey) {
+  return coreIsConfigured(overrideKey);
 }
 
 /**
@@ -16,7 +15,9 @@ function getClient() {
  */
 export async function searchWeb(query, options = {}) {
   const limit = options.limit || 5;
-  if (!isTinyFishConfigured()) {
+  const apiKey = options.apiKey || options.tinyfishKey;
+
+  if (!isTinyFishConfigured(apiKey)) {
     console.log(`[TinyFish Search Simulator] Querying: "${query}" (limit: ${limit})`);
     return [
       {
@@ -28,69 +29,37 @@ export async function searchWeb(query, options = {}) {
     ];
   }
 
-  try {
-    const client = getClient();
-    let results;
-    if (typeof client.search?.query === 'function') {
-      results = await client.search.query({ query });
-    } else if (typeof client.search === 'function') {
-      results = await client.search({ query, limit });
-    }
-
-    const items = results?.results || results?.items || results?.data || results || [];
-    return items.slice(0, limit).map(item => ({
-      title: item.title || item.name || 'Web Search Result',
-      url: item.url || item.link || '',
-      snippet: item.snippet || item.description || item.content || '',
-      domain: extractDomain(item.url || item.link || '')
-    })).filter(r => r.url);
-  } catch (error) {
-    console.warn(`[TinyFish Search Warning] Query "${query}" failed:`, error.message);
-    return [];
-  }
+  const res = await coreSearchWeb(query, { ...options, limit, apiKey });
+  return res.results || [];
 }
 
 /**
  * TinyFish Fetch: retrieve clean rendered markdown / text
  */
 export async function fetchWeb(url, options = {}) {
-  if (!isTinyFishConfigured()) {
+  const apiKey = options.apiKey || options.tinyfishKey;
+
+  if (!isTinyFishConfigured(apiKey)) {
     console.log(`[TinyFish Fetch Simulator] Fetching URL: ${url}`);
     return {
       url,
       title: 'Market Overview: Student Accommodations',
       content: 'Market data indicates 35% growth in managed student co-living spaces with security deposits being a major pain point.',
-      domain: extractDomain(url)
+      domain: 'example.com'
     };
   }
 
-  try {
-    const client = getClient();
-    let result;
-    if (typeof client.fetch?.getContents === 'function') {
-      const fetchRes = await client.fetch.getContents({ urls: [url], format: 'markdown' });
-      result = fetchRes?.results?.[0] || fetchRes?.[0];
-    } else if (typeof client.fetch === 'function') {
-      result = await client.fetch({ url, format: 'markdown' });
-    }
-
-    return {
-      url,
-      title: result?.title || '',
-      content: result?.text || result?.content || result?.markdown || result?.description || '',
-      domain: extractDomain(url)
-    };
-  } catch (error) {
-    console.warn(`[TinyFish Fetch Warning] Fetching "${url}" failed:`, error.message);
-    return null;
-  }
+  const res = await coreFetchWeb(url, { ...options, apiKey });
+  return res.content ? { url, content: res.content, title: 'Web Content', domain: res.domain } : null;
 }
 
 /**
  * TinyFish Web Agent: navigate or interact with web goal
  */
 export async function runWebAgent(url, goal, options = {}) {
-  if (!isTinyFishConfigured()) {
+  const apiKey = options.apiKey || options.tinyfishKey;
+
+  if (!isTinyFishConfigured(apiKey)) {
     console.log(`[TinyFish WebAgent Simulator] Running goal on ${url}: "${goal}"`);
     return {
       url,
@@ -101,43 +70,29 @@ export async function runWebAgent(url, goal, options = {}) {
     };
   }
 
-  try {
-    const client = getClient();
-    let agentResult;
-    if (typeof client.agent?.run === 'function') {
-      agentResult = await client.agent.run({ url, goal });
-    } else if (typeof client.agent === 'function') {
-      agentResult = await client.agent({ url, goal });
-    }
-
-    return {
-      url,
-      goal,
-      success: Boolean(agentResult?.success ?? true),
-      summary: agentResult?.summary || agentResult?.result || '',
-      findings: agentResult?.findings || []
-    };
-  } catch (error) {
-    console.warn(`[TinyFish WebAgent Warning] Agent failed on "${url}":`, error.message);
-    return {
-      url,
-      goal,
-      success: false,
-      error: error.message
-    };
-  }
+  const res = await coreRunWebAgent(url, goal, { ...options, apiKey });
+  return {
+    url,
+    goal,
+    success: res.success,
+    summary: typeof res.output === 'string' ? res.output : JSON.stringify(res.output || ''),
+    findings: []
+  };
 }
 
 /**
- * Comprehensive Web Research (Search -> Select -> Fetch -> Normalize)
+ * Comprehensive Web Research (Search -> Select -> Fetch -> Normalize -> Evidence)
  */
 export async function researchWeb(query, options = {}) {
-  if (!isTinyFishConfigured()) {
+  const apiKey = options.apiKey || options.tinyfishKey;
+
+  if (!isTinyFishConfigured(apiKey)) {
     console.log(`[TinyFish Pipeline] TinyFish not configured. Proceeding without live research.`);
     return {
       query,
       researchUsed: false,
       sources: [],
+      evidence: [],
       competitors: [],
       market_signals: [],
       pricing_signals: [],
@@ -145,40 +100,17 @@ export async function researchWeb(query, options = {}) {
     };
   }
 
-  try {
-    const searchResults = await searchWeb(query, { limit: options.limit || 4 });
-    if (!searchResults.length) {
-      return { query, researchUsed: false, sources: [], competitors: [], market_signals: [], pricing_signals: [], risks: [] };
-    }
-
-    const fetchedSources = [];
-    for (const res of searchResults.slice(0, 3)) {
-      if (!res.url) continue;
-      const page = await fetchWeb(res.url, { timeout: 10000 });
-      fetchedSources.push({
-        title: res.title,
-        url: res.url,
-        domain: res.domain || extractDomain(res.url),
-        snippet: res.snippet,
-        key_findings: page?.content
-          ? [page.content.slice(0, 200).replace(/\n+/g, ' ')]
-          : [res.snippet]
-      });
-    }
-
-    return {
-      query,
-      researchUsed: fetchedSources.length > 0,
-      sources: fetchedSources,
-      competitors: extractCompetitors(fetchedSources),
-      market_signals: [`Active market demand identified for query: "${query}"`],
-      pricing_signals: [],
-      risks: []
-    };
-  } catch (error) {
-    console.warn('[TinyFish Research Pipeline Error]:', error.message);
-    return { query, researchUsed: false, sources: [], competitors: [], market_signals: [], pricing_signals: [], risks: [] };
-  }
+  const result = await executeResearchPipeline(query, { ...options, apiKey });
+  return {
+    query,
+    researchUsed: Boolean(result.available && result.sources?.length > 0),
+    sources: result.sources || [],
+    evidence: result.evidence || [],
+    competitors: result.competitors || [],
+    market_signals: result.market_signals || [],
+    pricing_signals: result.pricing_signals || [],
+    risks: result.risks || []
+  };
 }
 
 /**
@@ -192,32 +124,9 @@ export async function compareWebSources(query, options = {}) {
     comparison: research.sources.map(s => ({
       domain: s.domain,
       title: s.title,
-      findings: s.key_findings
+      findings: s.key_findings || [s.snippet]
     }))
   };
-}
-
-function extractDomain(urlStr) {
-  try {
-    const u = new URL(urlStr);
-    return u.hostname.replace(/^www\./, '');
-  } catch {
-    return '';
-  }
-}
-
-function extractCompetitors(sources) {
-  const competitors = [];
-  const knownKeywords = ['stanza', 'nestaway', 'oyolife', 'zolo', 'yourspace', 'coho', 'amber'];
-  for (const s of sources) {
-    const text = `${s.title} ${s.snippet}`.toLowerCase();
-    for (const kw of knownKeywords) {
-      if (text.includes(kw) && !competitors.includes(kw)) {
-        competitors.push(kw.charAt(0).toUpperCase() + kw.slice(1));
-      }
-    }
-  }
-  return competitors;
 }
 
 export default {
