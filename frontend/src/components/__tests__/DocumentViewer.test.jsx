@@ -30,29 +30,33 @@ describe('DocumentViewer Component', () => {
     expect(screen.getByText(/Live Research Verified/i)).toBeInTheDocument();
   });
 
-  it('switches between Overview, Requirements, Research, Tasks, and Document tabs', () => {
+  it('switches between Overview, Requirements, Research, Tasks, and Document tabs', async () => {
     render(<DocumentViewer document={mockDoc} />);
 
     // Click Requirements Tab
     const reqTab = screen.getByRole('button', { name: /Requirements/i });
-    fireEvent.click(reqTab);
+    await act(async () => {
+      fireEvent.click(reqTab);
+    });
     expect(screen.getByText('FR-001')).toBeInTheDocument();
 
     // Click Research Tab
     const researchTab = screen.getByRole('button', { name: /^Research(\s*\(\d+\))?$/i });
-    fireEvent.click(researchTab);
+    await act(async () => {
+      fireEvent.click(researchTab);
+    });
     expect(screen.getByText('ZoloStays Competitor Overview')).toBeInTheDocument();
     expect(screen.getByText(/Grounded Evidence & Claims/i)).toBeInTheDocument();
     expect(screen.getByText(/Competitors charge 1 month deposit/i)).toBeInTheDocument();
   });
 
-  it('renders interactive Versions tab with snapshots and restore option', () => {
+  it('renders interactive Versions tab with snapshots and restore option', async () => {
     const handleRestore = vi.fn();
     render(<DocumentViewer document={mockDoc} onRestoreVersion={handleRestore} />);
 
     // Click Versions Tab
     const versionsTab = screen.getByRole('button', { name: /Versions/i });
-    act(() => {
+    await act(async () => {
       fireEvent.click(versionsTab);
     });
 
@@ -61,13 +65,13 @@ describe('DocumentViewer Component', () => {
     expect(screen.getByText('v1.1 Refined BRD')).toBeInTheDocument();
 
     // Click on a version to preview and verify restore button appears
-    act(() => {
+    await act(async () => {
       fireEvent.click(screen.getByText('v1.0 Initial Draft'));
     });
     const restoreBtn = screen.getByRole('button', { name: /Restore This Version/i });
     expect(restoreBtn).toBeInTheDocument();
 
-    act(() => {
+    await act(async () => {
       fireEvent.click(restoreBtn);
     });
     expect(handleRestore).toHaveBeenCalledWith(expect.objectContaining({ id: 'ver-1' }));
