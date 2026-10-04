@@ -303,25 +303,100 @@ export const normalizeResearchResults = (query, searchResults = []) => {
 };
 
 /**
- * Constructs structured evidence objects from search results and fetched content
- * Each evidence item has: { claim, evidence, source, url, confidence }
+ * Evaluates and ranks search results based on query relevance, domain authority, and informativeness
+ */
+export const rankSearchResults = (results = [], userPrompt = '') => {
+  if (!Array.isArray(results) || results.length === 0) return [];
+  const promptTokens = (userPrompt || '').toLowerCase().split(/\s+/).filter(t => t.length > 2);
+
+  const authoritativeDomains = [
+    'inc42.com', 'yourstory.com', 'techcrunch.com', 'economictimes.indiatimes.com',
+    'livemint.com', 'forbes.com', 'crunchbase.com', 'github.com', 'ycombinator.com'
+  ];
+
+  const scored = results.map(item => {
+    let score = 0;
+    const text = `${item.title || ''} ${item.snippet || ''}`.toLowerCase();
+    const domain = (item.domain || extractDomain(item.url) || '').toLowerCase();
+
+    // 1. Keyword density match
+    for (const token of promptTokens) {
+      if ((item.title || '').toLowerCase().includes(token)) score += 3;
+      if ((item.snippet || '').toLowerCase().includes(token)) score += 1.5;
+    }
+
+    // 2. Domain authority bonus
+    if (authoritativeDomains.some(d => domain.includes(d))) {
+      score += 4;
+    }
+
+    // 3. Quantitative signals (pricing, metrics, statistics)
+    if (/[₹$€%]|price|pricing|cost|market|competitor|growth/i.test(text)) {
+      score += 2;
+    }
+
+    // 4. Content length penalty for empty or stub snippets
+    if (!item.snippet || item.snippet.length < 30) {
+      score -= 3;
+    }
+
+    return { item, score };
+  });
+
+  // Sort descending by relevance score
+  scored.sort((a, b) => b.score - a.score);
+
+  // Deduplicate by root domain to avoid 3 results from the exact same site
+  const seenDomains = new Map();
+  const ranked = [];
+
+  for (const { item } of scored) {
+    const domain = item.domain || extractDomain(item.url);
+    const domainCount = seenDomains.get(domain) || 0;
+    if (domainCount < 2) {
+      seenDomains.set(domain, domainCount + 1);
+      ranked.push(item);
+    }
+  }
+
+  return ranked;
+};
+
+/**
+ * Constructs structured evidence objects with realistic confidence scoring
+ * Signals: High, Medium, Needs Verification
  */
 export const extractEvidenceObjects = (sourcesWithContent = []) => {
   const evidenceList = [];
 
-  for (const src of sourcesWithContent) {
-    if (!src.url) continue;
-    const textSnippet = src.content ? src.content.substring(0, 400).replace(/\n+/g, ' ') : src.snippet;
-    if (textSnippet && textSnippet.length > 20) {
-      evidenceList.push({
-        claim: `Market insight regarding ${src.title || src.domain}`,
-        evidence: textSnippet,
-        source: src.title || src.domain || src.url,
-        url: src.url,
-        confidence: 'high'
-      });
+  sourcesWithContent.forEach((src, idx) => {
+    if (!src.url) return;
+    const textSnippet = src.content ? src.content.substring(0, 450).replace(/\s+/g, ' ') : src.snippet;
+    if (!textSnippet || textSnippet.length < 15) return;
+
+    const hasNumbers = /[₹$€\d+%]|pricing|competitor|growth|revenue/i.test(textSnippet);
+    const hasDeepContent = Boolean(src.content && src.content.length > 200);
+
+    let confidence = 'Medium';
+    let confidenceReason = 'Snippet evidence indexed from primary web source.';
+
+    if (hasDeepContent && hasNumbers) {
+      confidence = 'High';
+      confidenceReason = 'Verified from full page fetch with concrete domain signals and metrics.';
+    } else if (!hasNumbers || textSnippet.length < 60 || idx > 2) {
+      confidence = 'Needs Verification';
+      confidenceReason = 'Secondary snippet or unconfirmed claim requiring independent validation.';
     }
-  }
+
+    evidenceList.push({
+      claim: `Market finding from ${src.title || src.domain || 'web source'}`,
+      evidence: textSnippet,
+      source: src.title || src.domain || src.url,
+      url: src.url,
+      confidence,
+      confidenceReason
+    });
+  });
 
   return evidenceList;
 };
@@ -349,17 +424,18 @@ export const executeResearchPipeline = async (userIdeaOrPrompt, options = {}) =>
 
     const cleanPrompt = userIdeaOrPrompt.replace(/[^\w\s]/gi, ' ').trim();
     
-    // Create 2 focused research questions (competitors and market pricing)
+    // Multiple focused research questions (competitors, pricing/monetization, market trends)
     const queries = [
-      `${cleanPrompt} competitors market India`.substring(0, 90),
-      `${cleanPrompt} pricing business model`.substring(0, 90)
+      `${cleanPrompt} competitors platform alternatives India`.substring(0, 90),
+      `${cleanPrompt} pricing business model monetization`.substring(0, 90),
+      `${cleanPrompt} market analysis challenges pain points`.substring(0, 90)
     ];
 
     const allResults = [];
     const seenUrls = new Set();
 
     for (const q of queries) {
-      const searchRes = await searchWeb(q, { limit: 3, timeoutMs: 12000, apiKey });
+      const searchRes = await searchWeb(q, { limit: 4, timeoutMs: 12000, apiKey });
       if (searchRes.success && searchRes.results.length > 0) {
         for (const item of searchRes.results) {
           if (!seenUrls.has(item.url)) {
@@ -380,8 +456,9 @@ export const executeResearchPipeline = async (userIdeaOrPrompt, options = {}) =>
       };
     }
 
-    // Rank & Fetch top 2-3 unique pages for deep grounded evidence
-    const topResults = allResults.slice(0, 3);
+    // Rank results based on multi-factor relevance and authority
+    const rankedResults = rankSearchResults(allResults, cleanPrompt);
+    const topResults = rankedResults.slice(0, 4);
     const sourcesWithContent = [];
 
     for (const res of topResults) {
@@ -399,7 +476,7 @@ export const executeResearchPipeline = async (userIdeaOrPrompt, options = {}) =>
         ...res,
         content: pageContent,
         key_findings: pageContent 
-          ? [pageContent.substring(0, 180).replace(/\n+/g, ' ')]
+          ? [pageContent.substring(0, 220).replace(/\s+/g, ' ')]
           : [res.snippet]
       });
     }

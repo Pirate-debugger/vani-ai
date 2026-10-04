@@ -23,14 +23,24 @@ import {
   Minimize2,
   Split,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Search,
+  ArrowUp,
+  ArrowDown,
+  RotateCcw,
+  Play,
+  Settings,
+  Flame,
+  Code2,
+  ListTodo
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
-import { CANONICAL_AGENTS } from '../config/canonicalAgents';
+import { CANONICAL_AGENTS, PRIMARY_MODES, ADVANCED_AGENTS, getAgentDef } from '../config/canonicalAgents';
 import AgentActivityCard from '../components/AgentActivityCard';
 import VoiceOrb from '../components/VoiceOrb';
 import DocumentViewer from '../components/DocumentViewer';
+import CommandPalette from '../components/CommandPalette';
 
 export default function Workspace({
   currentLang,
@@ -51,6 +61,15 @@ export default function Workspace({
   const [showVoiceOrb, setShowVoiceOrb] = useState(false);
   const [talkMode, setTalkMode] = useState('tap'); // 'tap' | 'hold'
 
+  // Section 10: Follow-up Queue
+  const [queuedInstructions, setQueuedInstructions] = useState([]);
+
+  // Section 19 & 20: Command Palette
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+
+  // Section 9: Plan Mode State
+  const [proposedPlan, setProposedPlan] = useState(null);
+
   // Project & Document context
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState(() => localStorage.getItem('vani_active_project_id') || '');
@@ -65,12 +84,14 @@ export default function Workspace({
   const [newProjectDesc, setNewProjectDesc] = useState('');
   const [isCreatingProject, setIsCreatingProject] = useState(false);
 
-  // Active streaming state
+  // Active streaming state & last prompt
   const [activeExecution, setActiveExecution] = useState(null);
+  const lastUserPromptRef = useRef('');
   const abortControllerRef = useRef(null);
   const chatEndRef = useRef(null);
   const dropdownRef = useRef(null);
   const projectDropdownRef = useRef(null);
+  const inputRef = useRef(null);
 
   const {
     isRecording,
@@ -88,13 +109,33 @@ export default function Workspace({
     voiceState
   } = voiceRecorder;
 
+  // Time-aware greeting for minimal home screen (Section 2)
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }, []);
+
+  // Active project metrics
+  const activeProject = useMemo(() => {
+    return projects.find(p => p.id === selectedProjectId) || null;
+  }, [projects, selectedProjectId]);
+
+  const activeProjectDocCount = activeProject?._count?.documents ?? (activeProject?.documents?.length || 0);
+  const activeProjectTaskCount = activeProject?._count?.tasks ?? 0;
+
+  // Selected agent definition
+  const selectedAgentDef = useMemo(() => {
+    return getAgentDef(selectedAgent);
+  }, [selectedAgent]);
+
   // ─── Fetch User Projects ──────────────────────────────────────────────────
   const fetchProjects = async () => {
     try {
       const res = await axios.get('/api/projects', { withCredentials: true });
       if (Array.isArray(res.data)) {
         setProjects(res.data);
-        // Default to first active project if none selected
         if (!selectedProjectId && res.data.length > 0) {
           setSelectedProjectId(res.data[0].id);
           localStorage.setItem('vani_active_project_id', res.data[0].id);
@@ -109,10 +150,25 @@ export default function Workspace({
     fetchProjects();
   }, []);
 
+  // Listen to URL query params ?projectId= (Section 29)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pId = params.get('projectId');
+    if (pId && pId !== selectedProjectId) {
+      setSelectedProjectId(pId);
+      localStorage.setItem('vani_active_project_id', pId);
+    }
+  }, []);
+
   const handleSelectProject = (projId) => {
     setSelectedProjectId(projId);
     localStorage.setItem('vani_active_project_id', projId);
     setProjectDropdownOpen(false);
+    // Sync URL without reload
+    const url = new URL(window.location);
+    if (projId) url.searchParams.set('projectId', projId);
+    else url.searchParams.delete('projectId');
+    window.history.replaceState({}, '', url);
   };
 
   const handleCreateProject = async (e) => {
@@ -158,9 +214,9 @@ export default function Workspace({
   // Auto-scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isStreaming, activeExecution]);
+  }, [messages, isStreaming, activeExecution, queuedInstructions]);
 
-  // STT Auto-submit hook
+  // STT Auto-submit hook with VAD
   useEffect(() => {
     if (!audioBlob) return;
     const waitAndSubmit = async () => {
@@ -207,12 +263,28 @@ export default function Workspace({
   // ─── Real SSE Streaming Execution ──────────────────────────────────────────
   const submitStreamMessage = async (queryText) => {
     const prompt = queryText.trim();
-    if (!prompt || isStreaming) return;
+    if (!prompt) return;
 
+    // Section 10: If already streaming, add to queued instructions!
+    if (isStreaming) {
+      setQueuedInstructions(prev => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          prompt,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
+      setInputText('');
+      return;
+    }
+
+    lastUserPromptRef.current = prompt;
     setInputText('');
     cancelSpeech?.();
     setIsStreaming(true);
     setActiveExecution(null);
+    setProposedPlan(null);
 
     const userMsg = {
       id: Date.now().toString(),
@@ -290,7 +362,7 @@ export default function Workspace({
             if (event.type === 'agent.started') {
               currentExecution = {
                 agentId: event.agent,
-                agentName: event.agentName,
+                agentName: event.name || event.agentName,
                 plan: event.plan,
                 status: 'running',
                 providers: event.preferredProvider ? [event.preferredProvider] : ['gemini'],
@@ -392,6 +464,9 @@ export default function Workspace({
     } catch (err) {
       if (err.name === 'AbortError') {
         console.log('Stream aborted by user');
+        if (activeExecution) {
+          setActiveExecution(prev => prev ? { ...prev, status: 'stopped' } : null);
+        }
       } else {
         console.error('[Execution Error]:', err);
         setMessages(prev => prev.map(m => m.id === assistantMsgId ? {
@@ -404,135 +479,198 @@ export default function Workspace({
     } finally {
       setIsStreaming(false);
       abortControllerRef.current = null;
+
+      // Section 10: Auto-process next queued follow-up instruction!
+      setQueuedInstructions(prev => {
+        if (prev.length > 0) {
+          const [nextTask, ...remaining] = prev;
+          setTimeout(() => submitStreamMessage(nextTask.prompt), 150);
+          return remaining;
+        }
+        return prev;
+      });
     }
   };
 
-  const handleStop = () => {
+  // Section 8: Stop & Retry controls
+  const handleStopExecution = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
-      abortControllerRef.current = null;
     }
-    cancelSpeech?.();
     setIsStreaming(false);
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!inputText.trim()) return;
-    submitStreamMessage(inputText.trim());
+  const handleRetryExecution = () => {
+    if (lastUserPromptRef.current) {
+      submitStreamMessage(lastUserPromptRef.current);
+    }
   };
 
-  const handleCopy = (id, text) => {
-    navigator.clipboard?.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+  // Section 14: Contextual Ask Vani from Artifact
+  const handleAskVaniFromArtifact = (item) => {
+    const questionPrompt = item.prompt || `Explain the design rationale and key requirements for "${item.title || item.id}".`;
+    submitStreamMessage(questionPrompt);
+    setViewMode('split');
   };
 
-  const activeProject = projects.find(p => p.id === selectedProjectId);
-  const currentAgentObj = CANONICAL_AGENTS.find(a => a.id === selectedAgent) || CANONICAL_AGENTS[0];
+  // Section 15: Post-generation Follow-up Actions
+  const handleFollowUpAction = (action, prompt) => {
+    if (prompt) {
+      submitStreamMessage(prompt);
+    }
+  };
+
+  // Copy to clipboard helper
+  const handleCopyMessage = (id, text) => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    }
+  };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#05030d] text-white relative overflow-hidden select-none">
+    <div className="flex-1 flex flex-col h-full bg-[#07050F] text-[#F8F7FF] overflow-hidden relative font-sans">
       
-      {/* ── Top Workspace Header ────────────────────────────────────────────── */}
-      <header className="px-4 py-2.5 glass-panel border-b border-white/5 flex items-center justify-between z-20 shrink-0">
-        <div className="flex items-center gap-3">
-          {/* Project Context Selector */}
+      {/* ── Global Command Palette Modal (Section 19 & 20) ────────────────── */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onNewChat={() => { setMessages([]); setActiveDocument(null); setViewMode('chat'); }}
+        onNewProject={() => setShowNewProjectModal(true)}
+        onSelectProject={handleSelectProject}
+        onOpenDocument={(docId) => loadDocument(docId)}
+        onSwitchMode={(mode) => setSelectedAgent(mode)}
+        onToggleVoice={() => {
+          if (isRecording) stopRecording();
+          else startRecording();
+        }}
+        onOpenSettings={() => window.location.href = '/settings'}
+      />
+
+      {/* ── Top Context Bar (Section 24) ──────────────────────────────────── */}
+      <header className="px-4 py-2.5 border-b border-white/10 bg-[#0B0914]/80 backdrop-blur-md flex items-center justify-between z-20 shrink-0 gap-3">
+        {/* Left: Project Selector */}
+        <div className="flex items-center gap-2.5 min-w-0">
           <div className="relative" ref={projectDropdownRef}>
             <button
               onClick={() => setProjectDropdownOpen(!projectDropdownOpen)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-all text-xs font-semibold text-white/90"
-              title="Select active project scope"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-xs font-semibold text-white transition-all shadow-sm max-w-[200px] truncate"
             >
-              <Folder size={14} className="text-cyber-cyan" />
-              <span className="max-w-[140px] truncate">{activeProject?.name || 'No Project Selected'}</span>
-              <ChevronDown size={12} className="text-white/40" />
+              <span className="w-2 h-2 rounded-full bg-cyber-cyan shrink-0 animate-pulse" />
+              <span className="truncate">{activeProject ? activeProject.name : 'Select Project'}</span>
+              <ChevronDown size={13} className="text-white/40 shrink-0 ml-1" />
             </button>
 
             {projectDropdownOpen && (
-              <div className="absolute top-full left-0 mt-1 w-64 rounded-xl bg-[#0e0a1f] border border-white/10 shadow-2xl p-1.5 z-50">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-white/40 px-2 py-1">
-                  Active Projects ({projects.length})
+              <div className="absolute left-0 mt-2 w-64 rounded-2xl bg-[#0F0C1E] border border-white/10 shadow-2xl p-2 z-50 text-xs animate-in fade-in zoom-in-95">
+                <div className="text-[10px] font-bold text-white/40 uppercase tracking-wider px-2 py-1">
+                  Active Projects
                 </div>
-                <div className="max-h-52 overflow-y-auto space-y-0.5 custom-scrollbar">
+                <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar my-1">
                   {projects.map(p => (
                     <button
                       key={p.id}
                       onClick={() => handleSelectProject(p.id)}
-                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center justify-between ${
-                        selectedProjectId === p.id 
-                          ? 'bg-cyber-cyan/15 text-cyber-cyan font-bold border border-cyber-cyan/30' 
-                          : 'text-white/70 hover:text-white hover:bg-white/5'
+                      className={`w-full text-left p-2 rounded-xl flex items-center justify-between transition-all ${
+                        selectedProjectId === p.id ? 'bg-cyber-cyan/15 text-cyber-cyan font-bold' : 'hover:bg-white/5 text-white/80'
                       }`}
                     >
                       <span className="truncate">{p.name}</span>
-                      {selectedProjectId === p.id && <Check size={12} />}
+                      {selectedProjectId === p.id && <Check size={13} className="text-cyber-cyan shrink-0" />}
                     </button>
                   ))}
                 </div>
-                <div className="border-t border-white/10 mt-1 pt-1">
+                <div className="border-t border-white/10 pt-1 mt-1">
                   <button
                     onClick={() => { setProjectDropdownOpen(false); setShowNewProjectModal(true); }}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-cyber-cyan hover:bg-cyber-cyan/10 transition-all flex items-center gap-1.5"
+                    className="w-full text-left p-2 rounded-xl text-cyber-purple hover:bg-cyber-purple/10 font-bold flex items-center gap-1.5 transition-colors"
                   >
-                    <Plus size={13} /> New Project
+                    <Plus size={13} /> Create New Project
                   </button>
                 </div>
               </div>
             )}
           </div>
 
-          <div className="hidden sm:flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-[11px] text-white/40 font-mono">Online · Unified Workspace</span>
+          {/* Context Metrics Badges (Section 24) */}
+          <div className="hidden lg:flex items-center gap-2 text-xs text-white/50 pl-2 border-l border-white/10">
+            <span className="flex items-center gap-1">
+              <FileText size={12} className="text-white/40" />
+              <span><strong className="text-white">{activeProjectDocCount}</strong> Docs</span>
+            </span>
+            <span className="text-white/20">•</span>
+            <span className="flex items-center gap-1">
+              <Globe size={12} className="text-cyber-cyan" />
+              <span><strong className="text-white">{activeDocument?.metadata?.sources?.length || 0}</strong> Research</span>
+            </span>
+            <span className="text-white/20">•</span>
+            <span className="flex items-center gap-1">
+              <CheckSquare size={12} className="text-emerald-400" />
+              <span><strong className="text-white">{activeProjectTaskCount}</strong> Tasks</span>
+            </span>
+            <span className="text-white/20">•</span>
+            <span className="px-2 py-0.5 rounded-full bg-white/5 text-[10px] uppercase font-bold text-white/60">
+              Active: {activeDocument ? activeDocument.type.toUpperCase() : selectedAgent.toUpperCase()}
+            </span>
           </div>
         </div>
 
-        {/* View Mode Switcher (when document is active) */}
-        <div className="flex items-center gap-2">
+        {/* Right Toolbar: Global Search, View Switcher & VoiceOrb */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Global Search Button (Section 19) */}
+          <button
+            onClick={() => setCommandPaletteOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 text-xs text-white/60 hover:text-white transition-all shadow-sm"
+            title="Search Vani (Ctrl+K / Cmd+K)"
+          >
+            <Search size={13} className="text-cyber-cyan" />
+            <span className="hidden sm:inline">Search Vani...</span>
+            <kbd className="hidden sm:inline-block px-1.5 py-0.5 rounded bg-white/10 text-[10px] font-mono text-white/50">⌘K</kbd>
+          </button>
+
+          {/* View Mode Switcher (if document active) */}
           {activeDocument && (
-            <div className="flex items-center gap-1 bg-white/5 p-1 rounded-lg border border-white/10 text-xs">
+            <div className="hidden sm:flex items-center bg-white/[0.03] border border-white/10 p-0.5 rounded-xl text-xs">
               <button
                 onClick={() => setViewMode('chat')}
-                className={`px-2.5 py-1 rounded-md transition-all ${
-                  viewMode === 'chat' ? 'bg-cyber-cyan/20 text-cyber-cyan font-bold' : 'text-white/60 hover:text-white'
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  viewMode === 'chat' ? 'bg-white/10 text-white font-bold' : 'text-white/50 hover:text-white'
                 }`}
-                title="Conversation Only"
               >
                 Chat
               </button>
               <button
                 onClick={() => setViewMode('split')}
-                className={`px-2.5 py-1 rounded-md transition-all ${
-                  viewMode === 'split' ? 'bg-cyber-cyan/20 text-cyber-cyan font-bold' : 'text-white/60 hover:text-white'
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  viewMode === 'split' ? 'bg-cyber-cyan/20 text-cyber-cyan font-bold' : 'text-white/50 hover:text-white'
                 }`}
-                title="Side-by-side View"
               >
                 Split
               </button>
               <button
                 onClick={() => setViewMode('document')}
-                className={`px-2.5 py-1 rounded-md transition-all ${
-                  viewMode === 'document' ? 'bg-cyber-cyan/20 text-cyber-cyan font-bold' : 'text-white/60 hover:text-white'
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  viewMode === 'document' ? 'bg-cyber-cyan/20 text-cyber-cyan font-bold' : 'text-white/50 hover:text-white'
                 }`}
-                title="Document Workspace"
               >
-                Document
+                Doc
               </button>
               <button
                 onClick={() => { setActiveDocument(null); setViewMode('chat'); }}
                 className="p-1 text-white/40 hover:text-rose-400 rounded transition-colors ml-1"
-                title="Close Document Panel"
+                title="Close Document"
               >
                 <X size={13} />
               </button>
             </div>
           )}
 
+          {/* VoiceOrb Visualizer Button */}
           <button
             onClick={() => setShowVoiceOrb(!showVoiceOrb)}
-            className={`p-2 rounded-lg border transition-all text-xs flex items-center gap-1.5 ${
-              showVoiceOrb ? 'bg-cyber-purple/20 text-cyber-purple border-cyber-purple/40 shadow-glow-purple' : 'bg-white/5 text-white/60 border-white/5 hover:text-white'
+            className={`p-2 rounded-xl border transition-all text-xs flex items-center gap-1.5 ${
+              showVoiceOrb ? 'bg-cyber-purple/20 text-cyber-purple border-cyber-purple/40 shadow-glow-purple' : 'bg-white/[0.03] text-white/60 border-white/5 hover:text-white'
             }`}
             title="Toggle VoiceOrb Canvas Visualizer"
           >
@@ -547,7 +685,7 @@ export default function Workspace({
 
         {/* Floating VoiceOrb Drawer/Canvas Preview */}
         {showVoiceOrb && (
-          <div className="absolute top-3 right-3 z-30 w-72 rounded-2xl bg-[#0b0818]/95 border border-cyber-purple/30 p-4 shadow-2xl backdrop-blur-xl flex flex-col items-center">
+          <div className="absolute top-3 right-3 z-30 w-72 rounded-2xl bg-[#0b0818]/95 border border-cyber-purple/30 p-4 shadow-2xl backdrop-blur-xl flex flex-col items-center animate-in fade-in zoom-in-95">
             <div className="w-full flex items-center justify-between pb-2 border-b border-white/10 mb-2">
               <span className="text-xs font-bold text-cyber-purple uppercase tracking-wider flex items-center gap-1.5">
                 <Sparkles size={13} /> Live VoiceOrb
@@ -558,56 +696,101 @@ export default function Workspace({
             </div>
             <div className="w-48 h-48 my-1 flex items-center justify-center">
               <VoiceOrb 
-                voiceState={isRecording ? 'listening' : isStreaming || isSttLoading ? 'thinking' : isSpeaking ? 'speaking' : 'idle'}
+                voiceState={
+                  isRecording 
+                    ? 'listening' 
+                    : isSttLoading 
+                    ? 'processing' 
+                    : isStreaming 
+                    ? (activeExecution?.toolsUsed?.includes('tinyfish.search') ? 'researching' : 'thinking')
+                    : isSpeaking 
+                    ? 'speaking' 
+                    : 'idle'
+                }
                 analyserNode={audioAnalyser}
                 size={180}
               />
             </div>
-            <p className="text-[11px] text-white/40 font-mono mt-1">
-              State: <span className="text-cyber-cyan font-bold uppercase">{isRecording ? 'listening' : isStreaming ? 'executing' : isSpeaking ? 'speaking' : 'idle'}</span>
+            <p className="text-[11px] text-white/50 font-mono mt-1">
+              State: <span className="text-cyber-cyan font-bold uppercase">{
+                isRecording ? 'listening' : isSttLoading ? 'processing' : isStreaming ? 'executing' : isSpeaking ? 'speaking' : 'idle'
+              }</span>
             </p>
           </div>
         )}
 
-        {/* LEFT COLUMN: Conversation & Real Agent Execution Area */}
+        {/* LEFT COLUMN: Conversation & Real Agent Execution Stream (55% desktop) */}
         <div className={`flex flex-col h-full overflow-hidden transition-all duration-300 ${
-          viewMode === 'document' ? 'hidden' : viewMode === 'split' ? 'w-full lg:w-1/2 border-r border-white/5' : 'w-full'
+          viewMode === 'document' ? 'hidden' : viewMode === 'split' ? 'w-full lg:w-[55%] border-r border-white/10' : 'w-full'
         }`}>
           
           {/* Scrollable Conversation Stream */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar">
             {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center max-w-lg mx-auto py-12">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyber-purple to-cyber-cyan flex items-center justify-center shadow-glow-neon mb-4">
-                  <Sparkles size={28} className="text-cyber-bg animate-pulse" />
-                </div>
-                <h2 className="text-2xl font-extrabold bg-gradient-to-r from-white via-white/90 to-cyber-cyan bg-clip-text text-transparent">
-                  VANI AI Unified Workspace
-                </h2>
-                <p className="text-sm text-white/50 mt-2 leading-relaxed">
-                  Voice AI + Enterprise BRD Business Analyst + Deep Web Research Agent. Speak or type to create complete product specs, live market analyses, or implementation blueprints.
+              /* ── Default Home / Minimal General Chat (Section 2) ────────── */
+              <div className="flex flex-col items-center justify-center min-h-full text-center max-w-xl mx-auto py-10">
+                
+                {/* Greeting & Subtitle */}
+                <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-white via-white/95 to-cyber-cyan bg-clip-text text-transparent">
+                  {greeting}
+                </h1>
+                <p className="text-sm text-white/60 mt-2 font-medium">
+                  How can I help you today?
                 </p>
 
-                {/* Quick Start Suggestions */}
-                <div className="grid grid-cols-1 gap-2 mt-6 w-full text-left">
+                {/* Interactive Suggestion Pills (Section 2) */}
+                <div className="flex flex-wrap items-center justify-center gap-2 mt-6 max-w-md">
                   {[
-                    "Vani, mere PG Finder startup ka detailed BRD bana do aur current competitors research karo.",
-                    "Search current PG finder competitors and compare their pricing.",
-                    "Explain React state management architecture.",
-                    "Vani, explain normalization in DBMS."
-                  ].map((s, idx) => (
+                    { label: 'Research', icon: '🔎', prompt: 'Research current competitors, pricing, and market demand for a PG Finder startup.' },
+                    { label: 'Create', icon: '📋', prompt: 'Create a comprehensive 29-section Enterprise BRD for my startup.' },
+                    { label: 'Analyze', icon: '📊', prompt: 'Analyze unit economics and risks for an on-demand delivery app.' },
+                    { label: 'Plan', icon: '🗺', prompt: 'Plan a phased MVP product roadmap with sprint milestones.' },
+                    { label: 'Build', icon: '⚡', prompt: 'Build an MVP plan: database schema, APIs, UI breakdown, and dev tasks.' },
+                    { label: 'Explore', icon: '💡', prompt: 'Explain recursion in C with clear examples.' }
+                  ].map((pill, idx) => (
                     <button
                       key={idx}
-                      onClick={() => submitStreamMessage(s)}
-                      className="p-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 hover:border-cyber-cyan/30 text-xs text-white/80 transition-all flex items-center justify-between group"
+                      onClick={() => submitStreamMessage(pill.prompt)}
+                      className="px-3.5 py-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.09] border border-white/10 hover:border-cyber-cyan/40 text-xs font-semibold text-white/80 hover:text-white transition-all flex items-center gap-1.5 shadow-sm"
                     >
-                      <span className="truncate pr-2">"{s}"</span>
-                      <Send size={12} className="text-white/20 group-hover:text-cyber-cyan shrink-0 transition-colors" />
+                      <span>{pill.icon}</span>
+                      <span>{pill.label}</span>
                     </button>
                   ))}
                 </div>
+
+                {/* Hero VoiceOrb Integration (Section 2 & 3) */}
+                <div className="my-8 flex flex-col items-center">
+                  <div 
+                    onClick={isRecording ? stopRecording : () => startRecording()} 
+                    className="cursor-pointer group relative flex flex-col items-center"
+                    title="Click to speak with Vani"
+                  >
+                    <VoiceOrb 
+                      voiceState={
+                        isRecording 
+                          ? 'listening' 
+                          : isSttLoading 
+                          ? 'processing' 
+                          : isStreaming 
+                          ? (activeExecution?.toolsUsed?.includes('tinyfish.search') ? 'researching' : 'thinking')
+                          : isSpeaking 
+                          ? 'speaking' 
+                          : 'idle'
+                      }
+                      analyserNode={audioAnalyser}
+                      size={190}
+                    />
+                    <div className="mt-3 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-mono uppercase tracking-wider text-white/60 group-hover:text-cyber-cyan transition-all flex items-center gap-1.5 shadow-sm">
+                      <span className={`w-2 h-2 rounded-full ${isRecording ? 'bg-rose-500 animate-ping' : isSpeaking ? 'bg-cyber-purple' : 'bg-cyber-cyan'}`} />
+                      <span>{isRecording ? 'Listening (Auto-Stop VAD)' : isSpeaking ? 'Speaking (Sarvam TTS)' : 'VoiceOrb Active · Click to Talk'}</span>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             ) : (
+              /* ── Conversation Message Bubbles ─────────────────────────── */
               messages.map(msg => (
                 <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                   <div className={`max-w-[92%] sm:max-w-[85%] rounded-2xl p-4 shadow-lg text-sm leading-relaxed ${
@@ -615,7 +798,7 @@ export default function Workspace({
                       ? 'bg-cyber-purple/20 border border-cyber-purple/40 text-white rounded-br-sm' 
                       : 'bg-white/[0.03] border border-white/10 text-white/90 rounded-bl-sm w-full'
                   }`}>
-                    {/* Header */}
+                    {/* Message Header */}
                     <div className="flex items-center justify-between gap-3 mb-2 pb-1.5 border-b border-white/5 text-[11px] text-white/40">
                       <span className="font-bold uppercase tracking-wider flex items-center gap-1.5">
                         {msg.role === 'user' ? <User size={12} className="text-cyber-purple" /> : <Sparkles size={12} className="text-cyber-cyan" />}
@@ -626,235 +809,287 @@ export default function Workspace({
 
                     {/* Agent Activity Card (only if real execution occurred!) */}
                     {msg.agentExecution && (
-                      <AgentActivityCard execution={msg.agentExecution} />
+                      <AgentActivityCard 
+                        execution={msg.agentExecution} 
+                        onStop={handleStopExecution}
+                        onRetry={handleRetryExecution}
+                      />
                     )}
 
-                    {/* Generated Document Prompt Banner */}
+                    {/* Generated Document Banner */}
                     {msg.documentId && (
-                      <div className="my-3 p-3 rounded-xl bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <FileText size={16} className="text-cyber-cyan" />
+                      <div className="my-3 p-3.5 rounded-2xl bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-between gap-2 shadow-sm">
+                        <div className="flex items-center gap-2.5">
+                          <FileText size={18} className="text-cyber-cyan" />
                           <div>
-                            <span className="font-bold text-xs text-white">{msg.documentTitle || 'Generated BRD Document'}</span>
+                            <span className="font-bold text-xs text-white">{msg.documentTitle || 'Enterprise BRD Document'}</span>
                             <p className="text-[10px] text-white/50">29-section enterprise specification ready</p>
                           </div>
                         </div>
                         <button
                           onClick={() => loadDocument(msg.documentId)}
-                          className="px-3 py-1.5 bg-cyber-cyan text-cyber-bg font-bold text-xs rounded-lg hover:bg-cyber-cyan/90 transition-all shrink-0 shadow-md"
+                          className="px-3.5 py-1.5 bg-cyber-cyan text-cyber-bg font-bold text-xs rounded-xl hover:bg-cyber-cyan/90 transition-all shrink-0 shadow-md"
                         >
                           Open in Workspace
                         </button>
                       </div>
                     )}
 
-                    {/* Message Content */}
-                    <div className="prose prose-invert prose-p:text-white/85 prose-headings:text-white prose-a:text-cyber-cyan max-w-none text-xs sm:text-sm">
-                      <ReactMarkdown>{msg.content || (msg.isStreaming ? 'Thinking & reasoning with live intelligence...' : '')}</ReactMarkdown>
+                    {/* Markdown Body */}
+                    <div className="prose prose-invert max-w-none text-white/90 text-sm leading-relaxed">
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
                     </div>
 
-                    {/* Actions */}
+                    {/* Action Toolbar */}
                     {msg.role === 'assistant' && !msg.isStreaming && (
-                      <div className="flex items-center gap-2 mt-3 pt-2 border-t border-white/5">
-                        <button
-                          onClick={() => handleCopy(msg.id, msg.content)}
-                          className="p-1.5 text-white/40 hover:text-white rounded hover:bg-white/5 transition-colors text-[11px] flex items-center gap-1"
-                          title="Copy response"
-                        >
-                          {copiedId === msg.id ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                          {copiedId === msg.id ? 'Copied' : 'Copy'}
-                        </button>
-                        <button
-                          onClick={() => speakWithTTS(msg.content, currentLang, voiceSpeed)}
-                          className="p-1.5 text-white/40 hover:text-white rounded hover:bg-white/5 transition-colors text-[11px] flex items-center gap-1"
-                          title="Listen with Sarvam TTS"
-                        >
-                          <Volume2 size={12} /> Listen
-                        </button>
+                      <div className="flex items-center justify-between pt-2 mt-2 border-t border-white/5 text-xs text-white/40">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleCopyMessage(msg.id, msg.content)}
+                            className="p-1 hover:text-white rounded transition-colors flex items-center gap-1"
+                            title="Copy message"
+                          >
+                            {copiedId === msg.id ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                            <span className="text-[11px]">{copiedId === msg.id ? 'Copied' : 'Copy'}</span>
+                          </button>
+                          <button
+                            onClick={() => speakWithTTS(msg.content, currentLang, voiceSpeed)}
+                            className="p-1 hover:text-cyber-cyan rounded transition-colors flex items-center gap-1"
+                            title="Speak with Sarvam TTS"
+                          >
+                            <Volume2 size={13} />
+                            <span className="text-[11px]">Listen</span>
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
               ))
             )}
-
-            {/* Live Streaming Activity Card indicator */}
-            {isStreaming && activeExecution && (
-              <div className="w-full">
-                <AgentActivityCard execution={activeExecution} isLive={true} />
-              </div>
-            )}
-
             <div ref={chatEndRef} />
           </div>
 
-          {/* ── Bottom Composer Area ────────────────────────────────────────── */}
-          <div className="p-3 sm:p-4 border-t border-white/5 glass-panel z-20 shrink-0">
-            {/* Live transcript banner */}
-            {isRecording && liveTranscript && (
-              <div className="mb-2 px-3.5 py-1.5 rounded-xl bg-cyber-cyan/10 border border-cyber-cyan/20 text-xs text-cyber-cyan italic flex items-center justify-between">
-                <span>"{liveTranscript}"</span>
-                <span className="text-[10px] text-white/40 font-mono">Listening · Auto-stops after silence</span>
+          {/* ── Follow-Up Queue Floating Bar (Section 10) ──────────────────── */}
+          {queuedInstructions.length > 0 && (
+            <div className="px-4 py-2 bg-cyber-purple/20 border-t border-cyber-purple/40 backdrop-blur-md flex items-center justify-between text-xs text-white animate-in slide-in-from-bottom-2">
+              <div className="flex items-center gap-2 truncate">
+                <span className="w-2 h-2 rounded-full bg-cyber-purple animate-ping shrink-0" />
+                <span className="font-bold text-cyber-purple">Queued ({queuedInstructions.length}):</span>
+                <span className="truncate italic text-white/80">"{queuedInstructions[0].prompt}"</span>
               </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="flex items-center gap-2 bg-white/[0.03] border border-white/10 rounded-2xl p-1.5 focus-within:border-cyber-cyan/40 transition-all shadow-xl">
-              
-              {/* Agent Selector Dropdown */}
-              <div className="relative shrink-0" ref={dropdownRef}>
+              <div className="flex items-center gap-1.5 shrink-0 pl-2">
                 <button
-                  type="button"
-                  onClick={() => setAgentDropdownOpen(!agentDropdownOpen)}
-                  className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-white/80 transition-all"
-                  title="Choose specialized Agent"
+                  onClick={() => setQueuedInstructions(prev => prev.slice(1))}
+                  className="p-1 text-white/60 hover:text-rose-400 rounded transition-colors"
+                  title="Remove from queue"
                 >
-                  <span>{currentAgentObj.icon}</span>
-                  <span className="hidden sm:inline">{currentAgentObj.name}</span>
-                  <ChevronDown size={11} className="text-white/40" />
+                  <X size={13} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Chat Composer & Simplified Mode Selector (Section 5) ──────── */}
+          <div className="p-3 sm:p-4 bg-[#090714]/90 border-t border-white/10 backdrop-blur-lg">
+            
+            {/* Mode Selector (Section 5: Auto, Chat, Research, Plan, Build + More) */}
+            <div className="flex items-center gap-1.5 mb-2.5 overflow-x-auto pb-1 custom-scrollbar text-xs">
+              {PRIMARY_MODES.map(mode => (
+                <button
+                  key={mode.id}
+                  onClick={() => setSelectedAgent(mode.id)}
+                  className={`px-3 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                    selectedAgent === mode.id
+                      ? 'bg-cyber-cyan/20 text-cyber-cyan border border-cyber-cyan/40 shadow-sm'
+                      : 'bg-white/[0.03] text-white/60 hover:text-white border border-white/5'
+                  }`}
+                >
+                  <span>{mode.icon}</span>
+                  <span>{mode.name}</span>
+                </button>
+              ))}
+
+              {/* More Agents Dropdown */}
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setAgentDropdownOpen(!agentDropdownOpen)}
+                  className={`px-3 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1 ${
+                    !PRIMARY_MODES.some(m => m.id === selectedAgent)
+                      ? 'bg-cyber-purple/20 text-cyber-purple border border-cyber-purple/40 shadow-sm'
+                      : 'bg-white/[0.03] text-white/50 hover:text-white border border-white/5'
+                  }`}
+                >
+                  <span>{!PRIMARY_MODES.some(m => m.id === selectedAgent) ? `${selectedAgentDef.icon} ${selectedAgentDef.name}` : 'More Agents →'}</span>
+                  <ChevronDown size={12} />
                 </button>
 
                 {agentDropdownOpen && (
-                  <div className="absolute bottom-full left-0 mb-2 w-72 rounded-2xl bg-[#0e0a1f] border border-white/10 shadow-2xl p-2 z-50 max-h-72 overflow-y-auto custom-scrollbar">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-white/40 px-2 py-1">
-                      Select Agent
+                  <div className="absolute left-0 bottom-full mb-2 w-64 rounded-2xl bg-[#0F0C1E] border border-white/10 shadow-2xl p-2 z-50 text-xs animate-in fade-in zoom-in-95 max-h-60 overflow-y-auto custom-scrollbar">
+                    <div className="text-[10px] font-bold text-white/40 uppercase tracking-wider px-2 py-1">
+                      Advanced Agents
                     </div>
-                    {CANONICAL_AGENTS.map(agent => (
+                    {ADVANCED_AGENTS.map(agent => (
                       <button
                         key={agent.id}
-                        type="button"
                         onClick={() => { setSelectedAgent(agent.id); setAgentDropdownOpen(false); }}
-                        className={`w-full text-left p-2 rounded-xl transition-all flex items-start gap-2.5 ${
-                          selectedAgent === agent.id ? 'bg-cyber-cyan/15 text-white border border-cyber-cyan/30' : 'hover:bg-white/5 text-white/70'
+                        className={`w-full text-left p-2 rounded-xl flex items-center justify-between transition-all ${
+                          selectedAgent === agent.id ? 'bg-cyber-purple/20 text-cyber-purple font-bold' : 'hover:bg-white/5 text-white/80'
                         }`}
                       >
-                        <span className="text-base leading-none mt-0.5">{agent.icon}</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold text-white">{agent.name}</p>
-                          <p className="text-[10px] text-white/40 line-clamp-1">{agent.description}</p>
+                        <div>
+                          <div className="font-semibold text-white">{agent.icon} {agent.name}</div>
+                          <div className="text-[10px] text-white/40">{agent.desc}</div>
                         </div>
+                        {selectedAgent === agent.id && <Check size={13} className="text-cyber-purple shrink-0" />}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
+            </div>
 
-              {/* Main Input Field */}
+            {/* Input Composer Box */}
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                submitStreamMessage(inputText);
+              }}
+              className="flex items-center gap-2 bg-white/[0.03] border border-white/10 rounded-2xl p-1.5 focus-within:border-cyber-cyan/50 focus-within:ring-1 focus-within:ring-cyber-cyan/30 transition-all shadow-inner"
+            >
               <input
+                ref={inputRef}
                 type="text"
                 value={inputText}
-                onChange={e => setInputText(e.target.value)}
-                placeholder="Ask Vani... (e.g. Create PG Finder BRD and research competitors)"
-                className="flex-1 bg-transparent px-2.5 py-2 text-xs sm:text-sm text-white placeholder-white/25 focus:outline-none"
-                disabled={isStreaming}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder={
+                  selectedAgent === 'research'
+                    ? "Ask Vani to research competitors, pricing, or market trends..."
+                    : selectedAgent === 'build'
+                    ? "Tell Vani what MVP to build..."
+                    : selectedAgent === 'plan'
+                    ? "Tell Vani what task to plan..."
+                    : "Ask Vani anything or speak naturally..."
+                }
+                className="flex-1 bg-transparent px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none"
               />
 
-              {/* Mic Button: Tap or Hold */}
+              {/* Voice Mic Button (Tap/Hold with VAD) */}
               <button
                 type="button"
-                onClick={() => {
-                  if (isRecording) stopRecording();
-                  else startRecording('tap');
-                }}
-                className={`p-2.5 rounded-xl transition-all shrink-0 flex items-center justify-center ${
+                onClick={isRecording ? stopRecording : () => startRecording()}
+                className={`p-2 rounded-xl transition-all flex items-center justify-center shrink-0 ${
                   isRecording 
-                    ? 'bg-rose-500 text-white animate-pulse shadow-glow-neon' 
-                    : isSttLoading 
-                    ? 'bg-amber-500/20 text-amber-300' 
-                    : 'bg-white/5 hover:bg-white/10 text-white/70 hover:text-white'
+                    ? 'bg-rose-500 text-white animate-pulse shadow-glow-rose' 
+                    : 'text-white/60 hover:text-cyber-cyan hover:bg-white/5'
                 }`}
-                title={isRecording ? 'Listening (silence auto-stops)... Click to stop' : 'Click to speak'}
+                title={isRecording ? 'Stop Recording' : 'Start Voice Input (Sarvam Saaras v4)'}
               >
-                {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
+                {isRecording ? <MicOff size={18} /> : <Mic size={18} />}
               </button>
 
-              {/* Send / Stop Button */}
+              {/* Send or Stop button */}
               {isStreaming ? (
                 <button
                   type="button"
-                  onClick={handleStop}
-                  className="px-3 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-bold rounded-xl border border-rose-500/30 transition-all flex items-center gap-1.5"
+                  onClick={handleStopExecution}
+                  className="p-2 bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 rounded-xl transition-all shrink-0 border border-rose-500/40"
+                  title="Stop generation"
                 >
-                  <Square size={12} /> Stop
+                  <Square size={16} />
                 </button>
               ) : (
                 <button
                   type="submit"
                   disabled={!inputText.trim()}
-                  className="p-2.5 btn-glow text-white rounded-xl disabled:opacity-30 disabled:cursor-not-allowed shrink-0 transition-all"
-                  title="Send Prompt"
+                  className={`p-2 rounded-xl transition-all flex items-center justify-center shrink-0 ${
+                    inputText.trim() 
+                      ? 'bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white shadow-md hover:opacity-90' 
+                      : 'text-white/20 bg-white/5 cursor-not-allowed'
+                  }`}
+                  title="Send instruction"
                 >
-                  <Send size={15} />
+                  <Send size={16} />
                 </button>
               )}
             </form>
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Document / BRD Workspace Viewer */}
-        {activeDocument && (viewMode === 'split' || viewMode === 'document') && (
-          <div className={`h-full overflow-hidden transition-all duration-300 ${
-            viewMode === 'document' ? 'w-full' : 'w-full lg:w-1/2'
+        {/* RIGHT COLUMN: Document & Artifact Workspace (45% desktop, toggleable) */}
+        {activeDocument && viewMode !== 'chat' && (
+          <div className={`h-full transition-all duration-300 ${
+            viewMode === 'document' ? 'w-full' : 'w-full lg:w-[45%]'
           }`}>
             <DocumentViewer
               document={activeDocument}
-              onClosePreview={() => { setActiveDocument(null); setViewMode('chat'); }}
+              onAskVani={handleAskVaniFromArtifact}
+              onFollowUpAction={handleFollowUpAction}
+              onConvertToPrd={() => submitStreamMessage(`Convert "${activeDocument.title}" into a complete Product Requirements Document (PRD).`)}
               onExport={(format) => {
-                window.open(`/api/export/${activeDocument.id}/${format}`, '_blank');
+                if (format === 'markdown') {
+                  const blob = new Blob([activeDocument.content || ''], { type: 'text/markdown' });
+                  const url = URL.createObjectURL(blob);
+                  const a = window.document.createElement('a');
+                  a.href = url;
+                  a.download = `${activeDocument.title || 'document'}.md`;
+                  a.click();
+                } else if (format === 'json') {
+                  const blob = new Blob([JSON.stringify(activeDocument, null, 2)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = window.document.createElement('a');
+                  a.href = url;
+                  a.download = `${activeDocument.title || 'document'}.json`;
+                  a.click();
+                }
               }}
+              onClosePreview={() => { setActiveDocument(null); setViewMode('chat'); }}
             />
           </div>
         )}
       </div>
 
-      {/* ── New Project Modal ─────────────────────────────────────────────── */}
+      {/* ── New Project Modal ──────────────────────────────────────────────── */}
       {showNewProjectModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="glass-panel border border-white/10 w-full max-w-md rounded-2xl bg-[#0e0a1f] p-6 shadow-2xl relative">
-            <button 
-              onClick={() => setShowNewProjectModal(false)}
-              className="absolute top-4 right-4 text-white/40 hover:text-white"
-            >
-              <X size={18} />
-            </button>
-            <h3 className="text-base font-extrabold text-white mb-1">Create New Project</h3>
-            <p className="text-xs text-white/40 mb-4">Scope your conversations, BRDs, research evidence, and implementation tasks.</p>
-
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+          <div className="w-full max-w-md bg-[#0F0C1E] border border-white/10 rounded-2xl shadow-2xl p-6">
+            <h3 className="text-lg font-bold text-white mb-2">Create New Project Workspace</h3>
+            <p className="text-xs text-white/50 mb-4">
+              Projects maintain dedicated memory across BRDs, PRDs, research evidence, and implementation tasks.
+            </p>
             <form onSubmit={handleCreateProject} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-white/50 uppercase tracking-wider mb-1">Project Name</label>
+                <label className="block text-xs font-semibold text-white/70 mb-1">Project Name</label>
                 <input
                   type="text"
-                  required
                   value={newProjectName}
-                  onChange={e => setNewProjectName(e.target.value)}
-                  placeholder="e.g. PG Finder App"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/20 focus:outline-none focus:border-cyber-cyan/40"
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  placeholder="e.g. Student PG Finder"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-cyber-cyan"
+                  required
                 />
               </div>
-
               <div>
-                <label className="block text-xs font-bold text-white/50 uppercase tracking-wider mb-1">Description (Optional)</label>
+                <label className="block text-xs font-semibold text-white/70 mb-1">Description (Optional)</label>
                 <textarea
                   value={newProjectDesc}
-                  onChange={e => setNewProjectDesc(e.target.value)}
-                  placeholder="Brief description of the product or startup goals..."
-                  rows={3}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/20 focus:outline-none focus:border-cyber-cyan/40 custom-scrollbar resize-none"
+                  onChange={(e) => setNewProjectDesc(e.target.value)}
+                  placeholder="Briefly describe the startup problem or objective..."
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-cyber-cyan resize-none h-20"
                 />
               </div>
-
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowNewProjectModal(false)}
-                  className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white/70 text-xs font-bold rounded-xl transition-all"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-white/60 hover:text-white"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isCreatingProject || !newProjectName.trim()}
-                  className="px-4 py-2 btn-glow text-white text-xs font-bold rounded-xl transition-all disabled:opacity-40"
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white text-xs font-bold shadow-md hover:opacity-90"
                 >
                   {isCreatingProject ? 'Creating...' : 'Create Project'}
                 </button>

@@ -60,7 +60,7 @@ const AGENT_CONFIGS = {
   }
 };
 
-export default function AgentActivityCard({ execution, isLive = false }) {
+export default function AgentActivityCard({ execution, isLive = false, onStop, onRetry }) {
   const [sourcesOpen, setSourcesOpen] = useState(false);
 
   if (!execution) return null;
@@ -132,6 +132,27 @@ export default function AgentActivityCard({ execution, isLive = false }) {
             {status === 'running' && <Loader2 size={12} className="animate-spin text-cyan-400" />}
             {status === 'running' ? 'Active Execution' : status === 'completed' ? 'Finished' : 'Error'}
           </span>
+
+          {/* Execution Controls (Section 8: Stop / Pause / Retry) */}
+          {status === 'running' && onStop && (
+            <button
+              onClick={onStop}
+              className="px-2 py-0.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 rounded-md text-[11px] font-bold transition-all"
+              title="Stop active execution"
+            >
+              Stop
+            </button>
+          )}
+
+          {status === 'failed' && onRetry && (
+            <button
+              onClick={onRetry}
+              className="px-2 py-0.5 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded-md text-[11px] font-bold transition-all"
+              title="Retry task execution"
+            >
+              Retry
+            </button>
+          )}
         </div>
       </div>
 

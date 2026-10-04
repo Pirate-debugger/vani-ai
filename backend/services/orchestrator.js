@@ -75,7 +75,7 @@ export async function orchestrate({
   const agentDef = getAgent(selectedAgentId);
 
   // 2. SIMPLE CONVERSATION & GENERAL CHAT (Rule 41: No unnecessary agentic steps)
-  const isDocAgent = ['brd', 'prd', 'technical'].includes(agentDef.id);
+  const isDocAgent = ['brd', 'prd', 'technical', 'build', 'plan'].includes(agentDef.id);
   const isResearchAgent = agentDef.id === 'research';
   const explicitlyRequestsResearch = needsWebResearch(userPrompt) || shouldUseLiveResearch(userPrompt, agentDef.id);
 
@@ -299,7 +299,7 @@ ${liveResearchData.sources.map((s, i) => `[${i + 1}] ${s.title} (${s.url}): ${s.
   enhancedPrompt += `\n\nIMPORTANT: Return ONLY a valid JSON object matching the requested schema. No commentary outside the JSON.`;
 
   // 7. CAPABILITY ROUTING FOR DOCUMENT GENERATION (Gemini -> OpenAI fallback)
-  const capability = agentDef.id === 'technical' ? 'technical' : 'brd';
+  const capability = (agentDef.id === 'technical' || agentDef.id === 'build') ? 'coding' : 'brd';
   const resolution = resolveProviderForCapability(capability, apiKeys);
   const chosenProviderName = resolution.providerName;
 

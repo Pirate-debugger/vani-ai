@@ -142,6 +142,24 @@ Return the output STRICTLY as a JSON object with schema:
   "content": "Markdown string containing: System Design, Frontend Architecture, Backend Architecture, Database Design, API Design, Scalability Plan",
   "metadata": { "researchUsed": false, "confidence": "high", "missingInformation": [], "sources": [] }
 }`,
+  build: `You are a Principal Software Architect & Full-Stack Engineering Lead.
+Your goal is to convert the user's project goal into an end-to-end, executable MVP Build Plan.
+Return the output STRICTLY as a JSON object with this schema:
+{
+  "title": "String",
+  "summary": "String",
+  "content": "Comprehensive Markdown string containing: # [Project Name] MVP Build Plan\\n## 1. Product Requirements & Core Scope\\n## 2. Database Schema Design (Tables, Relationships, Key Fields)\\n## 3. API Endpoints Specification (REST / GraphQL / RPC methods)\\n## 4. UI / UX Breakdown & Key Screens\\n## 5. System Architecture & Tech Stack (Frontend, Backend, Database, Auth, Storage)\\n## 6. Milestones & Delivery Phases\\n## 7. Tasks Breakdown & Sprint Plan\\n## 8. Estimated Timeline & Deployment Strategy",
+  "metadata": { "researchUsed": false, "confidence": "high", "missingInformation": [], "sources": [] }
+}`,
+  plan: `You are an AI Executive Planning Agent.
+Your goal is to create a structured, step-by-step action plan before committing to complex work.
+Return the output STRICTLY as a JSON object with this schema:
+{
+  "title": "String (e.g. Plan: [Project Name])",
+  "summary": "String",
+  "content": "Markdown string containing numbered execution steps, prerequisites, dependencies, and approval milestones.",
+  "metadata": { "researchUsed": false, "confidence": "high", "missingInformation": [], "sources": [] }
+}`,
   ux_designer: `You are a UX Designer Agent. Design the user experience.
 Return the output STRICTLY as a JSON object with schema:
 {
@@ -293,11 +311,29 @@ export const identifyAgentIntent = async (userPrompt, apiKeys) => {
   if (p.includes('prd') || p.includes('product requirement')) {
     return 'prd';
   }
+  if (p.startsWith('build ') || p.includes('build my ') || p.includes('build mvp') || p.includes('build an mvp') || p.includes('build plan')) {
+    return 'build';
+  }
+  if (p.startsWith('plan ') || p.includes('create a plan') || p.includes('action plan')) {
+    return 'plan';
+  }
   if (p.includes('show task') || p.includes('show my tasks') || p.includes('task status') || p.includes('assign task') || p.includes('mark task')) {
     return 'task_command';
   }
   if (p.includes('competitor') && !p.includes('brd') && !p.includes('prd')) {
-    return 'market_research';
+    return 'research';
+  }
+  if (p.includes('research') && !p.includes('brd') && !p.includes('prd') && !p.includes('build')) {
+    return 'research';
+  }
+
+  // Fast bypass for standard conversational and explanation queries
+  const simpleChatPatterns = [
+    'hello', 'hi', 'hey', 'namaste', 'kaise ho', 'who are you', 'what is',
+    'explain recursion', 'explain normalization', 'how do i', 'what does', 'tell me a joke'
+  ];
+  if (simpleChatPatterns.some(pattern => p.startsWith(pattern) || p === pattern) && !p.includes('competitor') && !p.includes('brd') && !p.includes('build')) {
+    return 'general';
   }
 
   const routerPrompt = `You are the AI Routing Engine for Bharat Startup Copilot.

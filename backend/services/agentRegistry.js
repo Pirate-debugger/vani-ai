@@ -135,6 +135,32 @@ export const AGENT_REGISTRY = {
     tools: ['tinyfish.search', 'tinyfish.fetch'],
     outputType: 'structured_document'
   },
+  build: {
+    id: 'build',
+    name: 'Build MVP Agent',
+    description: 'Converts goals into an executable project plan: Product requirements, Database, APIs, UI, Architecture, Milestones, Tasks, and Timeline.',
+    capabilities: ['reasoning', 'coding', 'document', 'structured_output'],
+    requiredCapabilities: ['reasoning', 'coding', 'document'],
+    preferredProvider: 'openai',
+    fallbackProviders: ['gemini'],
+    supportsWebResearch: true,
+    supportsTools: true,
+    tools: ['tinyfish.search', 'tinyfish.fetch'],
+    outputType: 'structured_document'
+  },
+  plan: {
+    id: 'plan',
+    name: 'Plan Mode Agent',
+    description: 'Creates structured step-by-step action plans before execution with interactive approval.',
+    capabilities: ['reasoning', 'chat', 'structured_output'],
+    requiredCapabilities: ['reasoning', 'chat'],
+    preferredProvider: 'gemini',
+    fallbackProviders: ['openai'],
+    supportsWebResearch: true,
+    supportsTools: true,
+    tools: ['tinyfish.search'],
+    outputType: 'plan'
+  },
   ux_designer: {
     id: 'ux_designer',
     name: 'UX/UI Wireframe Agent',
@@ -245,7 +271,8 @@ export const CANONICAL_ALIASES = {
   },
   technical: AGENT_REGISTRY.technical_architect,
   task: AGENT_REGISTRY.task_command,
-  product: AGENT_REGISTRY.idea_discovery
+  product: AGENT_REGISTRY.idea_discovery,
+  chat: AGENT_REGISTRY.general
 };
 
 export const ALL_AGENTS = {

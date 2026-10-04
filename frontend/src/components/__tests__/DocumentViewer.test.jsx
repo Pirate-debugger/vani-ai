@@ -39,7 +39,7 @@ describe('DocumentViewer Component', () => {
     expect(screen.getByText('FR-001')).toBeInTheDocument();
 
     // Click Research Tab
-    const researchTab = screen.getByRole('button', { name: /Research/i });
+    const researchTab = screen.getByRole('button', { name: /^Research(\s*\(\d+\))?$/i });
     fireEvent.click(researchTab);
     expect(screen.getByText('ZoloStays Competitor Overview')).toBeInTheDocument();
     expect(screen.getByText(/Grounded Evidence & Claims/i)).toBeInTheDocument();

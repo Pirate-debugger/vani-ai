@@ -52,6 +52,75 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/projects/search
+// Global search across projects, documents, and tasks for the user
+router.get('/search', requireAuth, async (req, res) => {
+  const query = (req.query.q || '').trim();
+  if (!query) {
+    return res.json({ projects: [], documents: [], tasks: [] });
+  }
+
+  try {
+    const userId = req.authUser.id;
+
+    // 1. Projects
+    const projects = await prisma.project.findMany({
+      where: {
+        userId,
+        OR: [
+          { name: { contains: query } },
+          { description: { contains: query } }
+        ]
+      },
+      take: 8,
+      orderBy: { updatedAt: 'desc' }
+    });
+
+    // 2. Documents
+    const documents = await prisma.document.findMany({
+      where: {
+        project: { userId },
+        OR: [
+          { title: { contains: query } },
+          { content: { contains: query } }
+        ]
+      },
+      select: {
+        id: true,
+        projectId: true,
+        title: true,
+        type: true,
+        metadata: true,
+        createdAt: true,
+        project: { select: { id: true, name: true } }
+      },
+      take: 8,
+      orderBy: { updatedAt: 'desc' }
+    });
+
+    // 3. Tasks
+    const tasks = await prisma.task.findMany({
+      where: {
+        project: { userId },
+        OR: [
+          { title: { contains: query } },
+          { description: { contains: query } }
+        ]
+      },
+      include: {
+        project: { select: { id: true, name: true } }
+      },
+      take: 8,
+      orderBy: { updatedAt: 'desc' }
+    });
+
+    res.json({ query, projects, documents, tasks });
+  } catch (error) {
+    console.error('Global search error:', error.message);
+    res.status(500).json({ error: 'Search failed', code: 'SEARCH_FAILED' });
+  }
+});
+
 // GET /api/projects/:id
 // Fetch project details and all its documents (ensures user owns the project)
 router.get('/:id', requireAuth, async (req, res) => {
