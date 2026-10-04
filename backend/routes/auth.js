@@ -188,8 +188,11 @@ const requireAuth = (req, res, next) => {
 
 // POST /api/auth/set-key
 router.post('/set-key', requireAuth, async (req, res) => {
-  const { key } = req.body;
+  const { key, provider = 'sarvam' } = req.body;
   if (!key) return res.status(400).json({ error: 'Key required' });
+
+  const validProviders = ['sarvam', 'openai', 'gemini', 'tinyfish'];
+  const targetProvider = validProviders.includes(provider.toLowerCase()) ? provider.toLowerCase() : 'sarvam';
   
   try {
     const encryptedKey = encryptKey(key);
@@ -197,17 +200,17 @@ router.post('/set-key', requireAuth, async (req, res) => {
       where: {
         userId_provider: {
           userId: req.authUser.id,
-          provider: 'sarvam'
+          provider: targetProvider
         }
       },
       update: { encryptedKey },
       create: {
         userId: req.authUser.id,
-        provider: 'sarvam',
+        provider: targetProvider,
         encryptedKey
       }
     });
-    res.json({ success: true, message: 'API key saved securely.' });
+    res.json({ success: true, message: `${targetProvider.toUpperCase()} API key saved securely.`, provider: targetProvider });
   } catch (err) {
     console.error('Save key error:', err);
     res.status(500).json({ error: 'Failed to save API key' });
@@ -216,14 +219,18 @@ router.post('/set-key', requireAuth, async (req, res) => {
 
 // POST /api/auth/clear-key
 router.post('/clear-key', requireAuth, async (req, res) => {
+  const { provider = 'sarvam' } = req.body;
+  const validProviders = ['sarvam', 'openai', 'gemini', 'tinyfish'];
+  const targetProvider = validProviders.includes(provider.toLowerCase()) ? provider.toLowerCase() : 'sarvam';
+
   try {
     await prisma.apiKey.deleteMany({
       where: {
         userId: req.authUser.id,
-        provider: 'sarvam'
+        provider: targetProvider
       }
     });
-    res.json({ success: true });
+    res.json({ success: true, provider: targetProvider });
   } catch (err) {
     console.error('Clear key error:', err);
     res.status(500).json({ error: 'Failed to clear API key' });
@@ -233,27 +240,34 @@ router.post('/clear-key', requireAuth, async (req, res) => {
 // GET /api/auth/status
 router.get('/status', async (req, res) => {
   const user = req.user || req.session?.localUser;
-  let hasDbKey = false;
+  const providersStatus = {
+    sarvam: { configured: Boolean(process.env.SARVAM_API_KEY), source: process.env.SARVAM_API_KEY ? 'env' : 'none' },
+    openai: { configured: Boolean(process.env.OPENAI_API_KEY), source: process.env.OPENAI_API_KEY ? 'env' : 'none' },
+    gemini: { configured: Boolean(process.env.GEMINI_API_KEY), source: process.env.GEMINI_API_KEY ? 'env' : 'none' },
+    tinyfish: { configured: Boolean(process.env.TINYFISH_API_KEY), source: process.env.TINYFISH_API_KEY ? 'env' : 'none' }
+  };
   
   if (user && user.id) {
     try {
-      const apiKey = await prisma.apiKey.findUnique({
-        where: {
-          userId_provider: {
-            userId: user.id,
-            provider: 'sarvam'
-          }
-        }
+      const dbKeys = await prisma.apiKey.findMany({
+        where: { userId: user.id }
       });
-      hasDbKey = !!apiKey;
+      for (const k of dbKeys) {
+        if (providersStatus[k.provider]) {
+          providersStatus[k.provider] = { configured: true, source: 'db' };
+        }
+      }
     } catch (err) {
       console.error('Status check error:', err);
     }
   }
 
+  const sarvamConfigured = providersStatus.sarvam.configured;
+
   res.json({
-    hasKey: !!(hasDbKey || process.env.SARVAM_API_KEY),
-    source: hasDbKey ? 'session' : process.env.SARVAM_API_KEY ? 'env' : 'none',
+    hasKey: sarvamConfigured,
+    source: providersStatus.sarvam.source,
+    providers: providersStatus,
     user: user || null,
     googleConfigured: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
   });

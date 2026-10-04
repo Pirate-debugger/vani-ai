@@ -81,6 +81,14 @@ const Assistant = ({
   const [projectId, setProjectId] = useState(
     () => localStorage.getItem('current_project_id') || null
   );
+  const [providerStatus, setProviderStatus] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/integrations/status', { credentials: 'include' })
+      .then(res => res.json())
+      .then(data => setProviderStatus(data))
+      .catch(() => {});
+  }, []);
 
   const closeAllDropdowns = () => {
     setBridgeLangOpen(false);
@@ -534,9 +542,24 @@ const Assistant = ({
             </div>
           )}
 
-          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-white/5 border border-white/5 rounded-full text-[10px] font-bold text-cyber-cyan">
-            <Sparkles size={11} className="animate-pulse" />
-            <span>Vani Live Mode</span>
+          {/* Phase 32 & 34: System Status, Active Provider & Demo Mode Banner */}
+          <div className="hidden sm:flex items-center gap-2">
+            {(!providerStatus?.sarvam?.configured && !providerStatus?.gemini?.configured && !providerStatus?.openai?.configured) ? (
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                Demo Mode
+              </span>
+            ) : (
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-green-500/20 text-green-300 border border-green-500/30">
+                Production AI
+              </span>
+            )}
+            <div className="flex items-center gap-1.5 px-3 py-1 bg-white/5 border border-white/5 rounded-full text-[10px] font-bold text-cyber-cyan">
+              <Sparkles size={11} className="animate-pulse" />
+              <span>
+                {providerStatus?.gemini?.configured ? 'Gemini 2.5' : providerStatus?.openai?.configured ? 'OpenAI GPT-4o' : 'Sarvam-105B'}
+                {providerStatus?.tinyfish?.configured ? ' + TinyFish' : ''}
+              </span>
+            </div>
           </div>
         </div>
       </div>

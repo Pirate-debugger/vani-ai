@@ -1,0 +1,207 @@
+import axios from 'axios';
+import FormData from 'form-data';
+
+const SARVAM_BASE_URL = 'https://api.sarvam.ai';
+
+// Modern Supported Sarvam Models (Phase 3)
+export const SARVAM_MODELS = {
+  STT: process.env.SARVAM_STT_MODEL || 'saaras:v4',
+  TTS: process.env.SARVAM_TTS_MODEL || 'bulbul:v3',
+  TRANSLATION: process.env.SARVAM_TRANSLATION_MODEL || 'mayura:v1',
+  LLM: process.env.SARVAM_LLM_MODEL || 'sarvam-105b'
+};
+
+export const SUPPORTED_LANGUAGES = [
+  'hi-IN', 'en-IN', 'bn-IN', 'ta-IN', 'te-IN',
+  'mr-IN', 'gu-IN', 'kn-IN', 'ml-IN', 'pa-IN', 'od-IN'
+];
+
+/**
+ * Check if Sarvam API is configured
+ */
+export function isSarvamConfigured() {
+  return Boolean(process.env.SARVAM_API_KEY && process.env.SARVAM_API_KEY.trim() !== '');
+}
+
+/**
+ * Speech to Text (Saaras v4)
+ */
+export async function transcribeAudio(audioBuffer, options = {}) {
+  const languageCode = options.languageCode || 'hi-IN';
+  const model = options.model || SARVAM_MODELS.STT;
+
+  if (!isSarvamConfigured()) {
+    console.log(`[Sarvam STT Simulator] Transcribing buffer (${audioBuffer ? audioBuffer.length : 0} bytes) in ${languageCode}`);
+    return {
+      transcript: 'Vani, student PG finder startup ke liye detailed BRD banao aur current competitors research karo.',
+      language_code: languageCode,
+      simulated: true
+    };
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append('file', audioBuffer, {
+      filename: 'audio.wav',
+      contentType: 'audio/wav'
+    });
+    formData.append('model', model);
+    if (languageCode && languageCode !== 'auto') {
+      formData.append('language_code', languageCode);
+    }
+
+    const response = await axios.post(`${SARVAM_BASE_URL}/speech-to-text`, formData, {
+      headers: {
+        'api-subscription-key': process.env.SARVAM_API_KEY,
+        ...formData.getHeaders()
+      },
+      timeout: 25000
+    });
+
+    return {
+      transcript: response.data.transcript || '',
+      language_code: response.data.language_code || languageCode,
+      simulated: false
+    };
+  } catch (error) {
+    console.error('[Sarvam STT Error]', error?.response?.data || error.message);
+    throw new Error(error?.response?.data?.message || 'Sarvam Speech-to-Text transcription failed');
+  }
+}
+
+/**
+ * Text to Speech (Bulbul v3)
+ */
+export async function synthesizeSpeech(text, options = {}) {
+  const targetLanguage = options.targetLanguage || 'hi-IN';
+  const speaker = options.speaker || 'meera';
+  const speechSampleRate = options.speechSampleRate || 8000;
+  const model = options.model || SARVAM_MODELS.TTS;
+
+  if (!isSarvamConfigured()) {
+    console.log(`[Sarvam TTS Simulator] Synthesizing speech for "${text.slice(0, 40)}..." in ${targetLanguage}`);
+    return {
+      audioBase64: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=',
+      simulated: true
+    };
+  }
+
+  try {
+    const response = await axios.post(`${SARVAM_BASE_URL}/text-to-speech`, {
+      inputs: [text],
+      target_language_code: targetLanguage,
+      speaker: speaker,
+      speech_sample_rate: speechSampleRate,
+      enable_preprocessing: true,
+      model: model
+    }, {
+      headers: {
+        'api-subscription-key': process.env.SARVAM_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      timeout: 20000
+    });
+
+    const audioBase64 = response.data.audios?.[0] || response.data.audio || '';
+    return {
+      audioBase64,
+      simulated: false
+    };
+  } catch (error) {
+    console.error('[Sarvam TTS Error]', error?.response?.data || error.message);
+    throw new Error(error?.response?.data?.message || 'Sarvam Text-to-Speech synthesis failed');
+  }
+}
+
+/**
+ * Translation (Mayura v1)
+ */
+export async function translateText(text, options = {}) {
+  const sourceLang = options.sourceLanguage || 'auto';
+  const targetLang = options.targetLanguage || 'hi-IN';
+  const model = options.model || SARVAM_MODELS.TRANSLATION;
+
+  if (!isSarvamConfigured()) {
+    console.log(`[Sarvam Translation Simulator] Translating from ${sourceLang} to ${targetLang}`);
+    return {
+      translatedText: text,
+      sourceLanguage: sourceLang,
+      targetLanguage: targetLang,
+      simulated: true
+    };
+  }
+
+  try {
+    const response = await axios.post(`${SARVAM_BASE_URL}/translate`, {
+      input: text,
+      source_language_code: sourceLang,
+      target_language_code: targetLang,
+      model: model
+    }, {
+      headers: {
+        'api-subscription-key': process.env.SARVAM_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    });
+
+    return {
+      translatedText: response.data.translated_text || text,
+      sourceLanguage: sourceLang,
+      targetLanguage: targetLang,
+      simulated: false
+    };
+  } catch (error) {
+    console.error('[Sarvam Translate Error]', error?.response?.data || error.message);
+    throw new Error(error?.response?.data?.message || 'Sarvam Translation failed');
+  }
+}
+
+/**
+ * LLM Chat Completion (Sarvam-105B)
+ */
+export async function chatCompletion(messages, options = {}) {
+  const model = options.model || SARVAM_MODELS.LLM;
+
+  if (!isSarvamConfigured()) {
+    return {
+      text: 'Namaste! Main Vani AI hoon. Aapki startup aur business requirements mein kaise madad kar sakti hoon?',
+      simulated: true,
+      provider: 'sarvam'
+    };
+  }
+
+  try {
+    const response = await axios.post(`${SARVAM_BASE_URL}/chat/completions`, {
+      model: model,
+      messages: messages,
+      temperature: options.temperature || 0.3,
+      max_tokens: options.max_tokens || 800
+    }, {
+      headers: {
+        'api-subscription-key': process.env.SARVAM_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      timeout: 30000
+    });
+
+    return {
+      text: response.data?.choices?.[0]?.message?.content || '',
+      simulated: false,
+      provider: 'sarvam'
+    };
+  } catch (error) {
+    console.error('[Sarvam Chat Error]', error?.response?.data || error.message);
+    throw new Error(error?.response?.data?.message || 'Sarvam chat completion failed');
+  }
+}
+
+export default {
+  isConfigured: isSarvamConfigured,
+  transcribeAudio,
+  synthesizeSpeech,
+  translateText,
+  chatCompletion,
+  SARVAM_MODELS,
+  SUPPORTED_LANGUAGES
+};

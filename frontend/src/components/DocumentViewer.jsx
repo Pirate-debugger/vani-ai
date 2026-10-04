@@ -128,8 +128,46 @@ const DocumentViewer = ({ document, onExport, onVersionHistory, onConvertToPrd, 
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-8 relative z-10 custom-scrollbar">
-        <div className="max-w-4xl mx-auto prose prose-invert prose-p:text-white/80 prose-headings:text-white prose-a:text-cyber-cyan prose-strong:text-cyber-cyan/90">
-          <ReactMarkdown>{document.content}</ReactMarkdown>
+        <div className="max-w-4xl mx-auto">
+          {/* Research Sources Panel (Phase 33) */}
+          {document.metadata?.sources && document.metadata.sources.length > 0 && (
+            <div className="mb-8 p-4 rounded-xl bg-white/[0.03] border border-cyber-cyan/25 shadow-lg">
+              <div className="flex items-center justify-between mb-3">
+                <span className="flex items-center gap-2 text-cyber-cyan font-bold text-xs uppercase tracking-wider">
+                  <Globe size={14} className="text-cyber-cyan" /> Grounded Web Research Sources (TinyFish)
+                </span>
+                <span className="text-[10px] text-white/40">Verified citations</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {document.metadata.sources.map((src, i) => (
+                  <a
+                    key={i}
+                    href={src.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-3 rounded-lg bg-black/40 border border-white/5 hover:border-cyber-cyan/40 hover:bg-black/60 transition-all flex flex-col justify-between group"
+                  >
+                    <div>
+                      <div className="text-xs font-semibold text-white group-hover:text-cyber-cyan flex items-center justify-between">
+                        <span className="truncate mr-2">{src.title || 'Web Citation'}</span>
+                        <ExternalLink size={12} className="opacity-60 group-hover:opacity-100 shrink-0" />
+                      </div>
+                      <div className="text-[11px] text-white/50 truncate mt-0.5">{src.domain || src.url}</div>
+                      {src.key_findings && src.key_findings.length > 0 ? (
+                        <p className="text-[11px] text-white/70 line-clamp-2 mt-1.5">{src.key_findings[0]}</p>
+                      ) : (
+                        src.snippet && <p className="text-[11px] text-white/70 line-clamp-2 mt-1.5">{src.snippet}</p>
+                      )}
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="prose prose-invert prose-p:text-white/80 prose-headings:text-white prose-a:text-cyber-cyan prose-strong:text-cyber-cyan/90 max-w-none">
+            <ReactMarkdown>{document.content}</ReactMarkdown>
+          </div>
         </div>
       </div>
     </div>

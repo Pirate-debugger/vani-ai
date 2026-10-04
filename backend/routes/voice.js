@@ -76,7 +76,7 @@ router.post('/stt', upload.single('file'), async (req, res, next) => {
 
       return res.json({
         transcript: fallbacks[languageCode] || fallbacks['en-IN'],
-        model: 'saaras:v3-simulated',
+        model: 'saaras:v4-simulated',
         language_code: languageCode,
         confidence: 0.96,
         simulated: true
@@ -91,7 +91,7 @@ router.post('/stt', upload.single('file'), async (req, res, next) => {
       filename: 'input_audio.wav',
       contentType: file.mimetype || 'audio/wav',
     });
-    formData.append('model', 'saaras:v3');
+    formData.append('model', 'saaras:v4');
     if (languageCode && languageCode !== 'auto' && languageCode !== 'unknown') {
       formData.append('language_code', languageCode);
     }
@@ -165,7 +165,7 @@ router.post('/tts', async (req, res, next) => {
       text: text,
       target_language_code: langCode,
       speaker: chosenSpeaker,
-      model: 'bulbul:v2',
+      model: 'bulbul:v3',
       speech_sample_rate: 22050,
       enable_preprocessing: true,
       pace: chosenPace
@@ -184,7 +184,7 @@ router.post('/tts', async (req, res, next) => {
       audio_content: audioContent,
       language_code: langCode,
       speaker: chosenSpeaker,
-      model: 'bulbul:v2',
+      model: 'bulbul:v3',
       simulated: false
     });
 
@@ -312,7 +312,7 @@ router.post('/bridge', async (req, res, next) => {
         filename: `input.${ext}`,
         contentType: mimeType || 'audio/webm'
       });
-      sttForm.append('model', 'saaras:v3');
+      sttForm.append('model', 'saaras:v4');
       sttForm.append('language_code', sourceLang);
       const sttRes = await axios.post('https://api.sarvam.ai/speech-to-text', sttForm, {
         headers: { 'api-subscription-key': apiKey, ...sttForm.getHeaders() },
@@ -376,7 +376,7 @@ router.post('/bridge', async (req, res, next) => {
         text: llmReply.substring(0, 500),
         target_language_code: targetLang,
         speaker: defaultSpeaker,
-        model: 'bulbul:v2',
+        model: 'bulbul:v3',
         speech_sample_rate: 22050,
         enable_preprocessing: true
       }, { 
@@ -445,7 +445,7 @@ router.post('/interpret', async (req, res, next) => {
         filename: `input.${ext}`,
         contentType: mimeType || 'audio/webm'
       });
-      sttForm.append('model', 'saaras:v3');
+      sttForm.append('model', 'saaras:v4');
       sttForm.append('language_code', lang1);
       
       const sttRes = await axios.post('https://api.sarvam.ai/speech-to-text', sttForm, {
@@ -507,7 +507,7 @@ router.post('/interpret', async (req, res, next) => {
       }
     }
 
-    // Supported TTS languages for Sarvam Bulbul v2
+    // Supported TTS languages for Sarvam Bulbul v3
     const supportedTTSLanguages = ['en-IN', 'hi-IN', 'bn-IN', 'gu-IN', 'kn-IN', 'ml-IN', 'mr-IN', 'or-IN', 'pa-IN', 'ta-IN', 'te-IN'];
 
     // Step 3: TTS in Target Language
@@ -523,7 +523,7 @@ router.post('/interpret', async (req, res, next) => {
           text: translatedText.substring(0, 500),
           target_language_code: targetLang,
           speaker: defaultSpeaker,
-          model: 'bulbul:v2',
+          model: 'bulbul:v3',
           speech_sample_rate: 22050,
           enable_preprocessing: true
         }, { 

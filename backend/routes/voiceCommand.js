@@ -117,13 +117,13 @@ router.post('/command', upload.single('file'), async (req, res) => {
         transcript = fallbacks[langCode] || fallbacks['en-IN'];
       } else {
         // Production Sarvam STT
-        console.log(`[VoiceCommand Production STT] Processing audio via Sarvam Saaras v3`);
+        console.log(`[VoiceCommand Production STT] Processing audio via Sarvam Saaras v4`);
         const formData = new FormData();
         formData.append('file', file.buffer, {
           filename: 'command_audio.wav',
           contentType: file.mimetype || 'audio/wav',
         });
-        formData.append('model', 'saaras:v3');
+        formData.append('model', 'saaras:v4');
         if (langCode && langCode !== 'auto' && langCode !== 'unknown') {
           formData.append('language_code', langCode);
         }
@@ -243,7 +243,7 @@ router.post('/command', upload.single('file'), async (req, res) => {
           text: ttsInputText,
           target_language_code: langCode,
           speaker: defaultSpeaker,
-          model: 'bulbul:v2',
+          model: 'bulbul:v3',
           speech_sample_rate: 22050,
           enable_preprocessing: true,
           pace: 1.0
