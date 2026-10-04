@@ -1,4 +1,4 @@
-import { AGENT_REGISTRY, CANONICAL_AGENTS, getAgent } from './agentRegistry.js';
+import { AGENT_REGISTRY, getAgent } from './agentRegistry.js';
 import { 
   identifyAgentIntent, 
   extractTasksFromDocument,

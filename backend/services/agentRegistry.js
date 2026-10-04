@@ -253,6 +253,8 @@ export const ALL_AGENTS = {
   ...CANONICAL_ALIASES
 };
 
+export const CANONICAL_AGENTS = AGENT_REGISTRY;
+
 export function getAgent(agentId) {
   if (!agentId || agentId === 'auto') return CANONICAL_ALIASES.auto;
   return ALL_AGENTS[agentId] || AGENT_REGISTRY.general;
