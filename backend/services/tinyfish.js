@@ -62,13 +62,13 @@ export const searchWeb = async (query, options = {}) => {
   try {
     console.log(`[TinyFish Search] Querying: "${query}" (limit: ${limit})`);
     const response = await withTimeout(
-      client.search.query({ query, limit }),
+      client.search.query({ query }),
       timeoutMs,
       `TinyFish search timed out after ${timeoutMs}ms`
     );
 
     const rawResults = response?.results || response?.data || [];
-    const normalized = rawResults.map(item => ({
+    const normalized = rawResults.slice(0, limit).map(item => ({
       title: item.title || item.name || 'Web Source',
       url: item.url || item.link || '',
       snippet: item.snippet || item.description || item.content || ''

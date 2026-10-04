@@ -4,15 +4,23 @@ import app from '../server.js';
 
 describe('AI Routes', () => {
   let originalSarvamKey;
+  let originalOpenAIKey;
+  let originalGeminiKey;
 
   beforeEach(() => {
     vi.clearAllMocks();
     originalSarvamKey = process.env.SARVAM_API_KEY;
-    delete process.env.SARVAM_API_KEY; // Force simulator mode
+    originalOpenAIKey = process.env.OPENAI_API_KEY;
+    originalGeminiKey = process.env.GEMINI_API_KEY;
+    delete process.env.SARVAM_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.GEMINI_API_KEY;
   });
 
   afterEach(() => {
-    process.env.SARVAM_API_KEY = originalSarvamKey;
+    if (originalSarvamKey !== undefined) process.env.SARVAM_API_KEY = originalSarvamKey;
+    if (originalOpenAIKey !== undefined) process.env.OPENAI_API_KEY = originalOpenAIKey;
+    if (originalGeminiKey !== undefined) process.env.GEMINI_API_KEY = originalGeminiKey;
   });
 
   describe('POST /api/ai/chat', () => {

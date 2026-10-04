@@ -30,19 +30,20 @@ export async function searchWeb(query, options = {}) {
 
   try {
     const client = getClient();
-    const results = await client.search({
-      query,
-      limit,
-      timeout: options.timeout || 15000
-    });
+    let results;
+    if (typeof client.search?.query === 'function') {
+      results = await client.search.query({ query });
+    } else if (typeof client.search === 'function') {
+      results = await client.search({ query, limit });
+    }
 
-    const items = results?.items || results?.results || results || [];
-    return items.map(item => ({
-      title: item.title || 'Web Search Result',
+    const items = results?.results || results?.items || results?.data || results || [];
+    return items.slice(0, limit).map(item => ({
+      title: item.title || item.name || 'Web Search Result',
       url: item.url || item.link || '',
       snippet: item.snippet || item.description || item.content || '',
       domain: extractDomain(item.url || item.link || '')
-    }));
+    })).filter(r => r.url);
   } catch (error) {
     console.warn(`[TinyFish Search Warning] Query "${query}" failed:`, error.message);
     return [];
@@ -65,16 +66,18 @@ export async function fetchWeb(url, options = {}) {
 
   try {
     const client = getClient();
-    const result = await client.fetch({
-      url,
-      format: 'markdown',
-      timeout: options.timeout || 15000
-    });
+    let result;
+    if (typeof client.fetch?.getContents === 'function') {
+      const fetchRes = await client.fetch.getContents({ urls: [url], format: 'markdown' });
+      result = fetchRes?.results?.[0] || fetchRes?.[0];
+    } else if (typeof client.fetch === 'function') {
+      result = await client.fetch({ url, format: 'markdown' });
+    }
 
     return {
       url,
       title: result?.title || '',
-      content: result?.content || result?.markdown || result?.text || '',
+      content: result?.text || result?.content || result?.markdown || result?.description || '',
       domain: extractDomain(url)
     };
   } catch (error) {
@@ -100,11 +103,12 @@ export async function runWebAgent(url, goal, options = {}) {
 
   try {
     const client = getClient();
-    const agentResult = await client.agent({
-      url,
-      goal,
-      timeout: options.timeout || 30000
-    });
+    let agentResult;
+    if (typeof client.agent?.run === 'function') {
+      agentResult = await client.agent.run({ url, goal });
+    } else if (typeof client.agent === 'function') {
+      agentResult = await client.agent({ url, goal });
+    }
 
     return {
       url,
