@@ -50,49 +50,42 @@ export const callSarvamLLM = async (messages, prompt, langCode, persona, profile
     ...(messages || [{ role: 'user', content: prompt }])
   ];
 
-  let response;
-  try {
-    console.log(`[LLM Sarvam] Trying sarvam-105b (maxTokens: ${maxTokens})...`);
-    response = await axios.post('https://api.sarvam.ai/v1/chat/completions', {
-      model: 'sarvam-105b',
-      messages: apiMessages,
-      temperature: options.temperature || 0.7,
-      reasoning_effort: null,
-      max_tokens: maxTokens
-    }, {
-      headers: {
-        'api-subscription-key': apiKey,
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: options.timeoutMs || 30000
-    });
-  } catch (err1) {
-    console.warn('Sarvam 105b failed, trying sarvam-30b...', err1.message);
-    response = await axios.post('https://api.sarvam.ai/v1/chat/completions', {
-      model: 'sarvam-30b',
-      messages: apiMessages,
-      temperature: options.temperature || 0.7,
-      reasoning_effort: null,
-      max_tokens: maxTokens
-    }, {
-      headers: {
-        'api-subscription-key': apiKey,
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: options.timeoutMs || 30000
-    });
+  const candidateModels = ['sarvam-105b-conversations', 'sarvam-105b'];
+  let lastErr = null;
+
+  for (const model of candidateModels) {
+    try {
+      console.log(`[LLM Sarvam] Trying ${model} (maxTokens: ${maxTokens})...`);
+      const response = await axios.post('https://api.sarvam.ai/v1/chat/completions', {
+        model,
+        messages: apiMessages,
+        temperature: options.temperature || 0.7,
+        max_tokens: maxTokens
+      }, {
+        headers: {
+          'api-subscription-key': apiKey,
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: options.timeoutMs || 30000
+      });
+
+      const choice = response.data?.choices?.[0]?.message;
+      const content = choice?.content?.trim() || choice?.reasoning_content?.trim();
+      if (content) {
+        return {
+          response: content,
+          model: response.data.model || model,
+          simulated: false
+        };
+      }
+    } catch (err) {
+      console.warn(`[LLM Sarvam] ${model} attempt failed:`, err.response?.data?.error?.message || err.message);
+      lastErr = err;
+    }
   }
 
-  if (response.data?.choices?.[0]?.message?.content) {
-    return {
-      response: response.data.choices[0].message.content,
-      model: response.data.model || 'sarvam-105b',
-      simulated: false
-    };
-  }
-  throw new Error('No valid response from Sarvam');
+  throw new Error(`Sarvam LLM call failed across models: ${lastErr?.message || 'Unknown error'}`);
 };
 
 export const callOpenAILLM = async (messages, prompt, langCode, personality, profileContext, apiKey, options = {}) => {

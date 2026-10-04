@@ -8,7 +8,8 @@ export const SARVAM_MODELS = {
   STT: process.env.SARVAM_STT_MODEL || 'saaras:v4',
   TTS: process.env.SARVAM_TTS_MODEL || 'bulbul:v3',
   TRANSLATION: process.env.SARVAM_TRANSLATION_MODEL || 'mayura:v1',
-  LLM: process.env.SARVAM_LLM_MODEL || 'sarvam-105b'
+  LLM: process.env.SARVAM_LLM_MODEL || 'sarvam-105b',
+  CONVERSATIONS: process.env.SARVAM_CHAT_MODEL || 'sarvam-105b-conversations'
 };
 
 export const SUPPORTED_LANGUAGES = [
@@ -74,7 +75,11 @@ export async function transcribeAudio(audioBuffer, options = {}) {
  */
 export async function synthesizeSpeech(text, options = {}) {
   const targetLanguage = options.targetLanguage || 'hi-IN';
-  const speaker = options.speaker || 'meera';
+  let defaultSpeaker = 'priya';
+  if (targetLanguage.startsWith('ta')) defaultSpeaker = 'kavitha';
+  else if (targetLanguage.startsWith('mr')) defaultSpeaker = 'ritu';
+  else if (targetLanguage.startsWith('en')) defaultSpeaker = 'neha';
+  const speaker = options.speaker || defaultSpeaker;
   const speechSampleRate = options.speechSampleRate || 8000;
   const model = options.model || SARVAM_MODELS.TTS;
 
@@ -158,10 +163,10 @@ export async function translateText(text, options = {}) {
 }
 
 /**
- * LLM Chat Completion (Sarvam-105B)
+ * LLM Chat Completion (Sarvam-105B Conversations)
  */
 export async function chatCompletion(messages, options = {}) {
-  const model = options.model || SARVAM_MODELS.LLM;
+  const model = options.model || (options.isReasoning ? SARVAM_MODELS.LLM : SARVAM_MODELS.CONVERSATIONS);
 
   if (!isSarvamConfigured()) {
     return {
@@ -172,7 +177,7 @@ export async function chatCompletion(messages, options = {}) {
   }
 
   try {
-    const response = await axios.post(`${SARVAM_BASE_URL}/chat/completions`, {
+    const response = await axios.post(`${SARVAM_BASE_URL}/v1/chat/completions`, {
       model: model,
       messages: messages,
       temperature: options.temperature || 0.3,
@@ -180,13 +185,16 @@ export async function chatCompletion(messages, options = {}) {
     }, {
       headers: {
         'api-subscription-key': process.env.SARVAM_API_KEY,
+        'Authorization': `Bearer ${process.env.SARVAM_API_KEY}`,
         'Content-Type': 'application/json'
       },
       timeout: 30000
     });
 
+    const msg = response.data?.choices?.[0]?.message;
+    const content = (msg?.content && msg.content.trim()) || (msg?.reasoning_content && msg.reasoning_content.trim()) || '';
     return {
-      text: response.data?.choices?.[0]?.message?.content || '',
+      text: content,
       simulated: false,
       provider: 'sarvam'
     };

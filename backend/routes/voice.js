@@ -133,12 +133,12 @@ router.post('/tts', async (req, res, next) => {
     const langCode = target_language_code || 'hi-IN';
     const chosenPace = speed ? parseFloat(speed) : 1.0;
 
-    // Valid speakers for bulbul:v2: anushka, abhilash, manisha, vidya, arya, karun, hitesh
+    // Valid speakers for bulbul:v3: priya, ritu, neha, pooja, rohan, aditya, rahul, kavya, kavitha, etc.
     // Pick a good default per language
-    let defaultSpeaker = 'anushka'; // Female Hindi — works for most Indian languages
-    if (langCode.startsWith('ta')) defaultSpeaker = 'arya';
-    else if (langCode.startsWith('en')) defaultSpeaker = 'abhilash';
-    else if (langCode.startsWith('mr')) defaultSpeaker = 'manisha';
+    let defaultSpeaker = 'priya'; // Female Hindi — works for most Indian languages
+    if (langCode.startsWith('ta')) defaultSpeaker = 'kavitha';
+    else if (langCode.startsWith('en')) defaultSpeaker = 'neha';
+    else if (langCode.startsWith('mr')) defaultSpeaker = 'ritu';
     const chosenSpeaker = speaker || defaultSpeaker;
 
     const apiKey = await getSarvamKey(req);
