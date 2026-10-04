@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Bot, ArrowLeft, Plus, Search, Activity, Plug, X, History } from 'lucide-react';
+import { Bot, ArrowLeft, Plus, Search, Activity, Plug, X, History, ListTodo } from 'lucide-react';
 import DocumentViewer from '../components/DocumentViewer';
 import RoadmapTimeline from '../components/RoadmapTimeline';
 import IntegrationsPanel from '../components/IntegrationsPanel';
+import TaskBoard from '../components/TaskBoard';
 
 const AGENTS = [
   { id: 'brd', label: 'BRD Agent', desc: 'Generate Business Requirements' },
@@ -76,7 +77,7 @@ const Project = () => {
     }
   };
 
-  const selectedDoc = (project.documents || []).find(d => d.id === selectedDocId) || (project.documents || [])[0];
+  const selectedDoc = (project?.documents || []).find(d => d.id === selectedDocId) || (project?.documents || [])[0];
 
   useEffect(() => {
     if (showVersionHistory && selectedDoc?.id) {
@@ -214,6 +215,9 @@ const Project = () => {
             <button onClick={() => setActiveTab('documents')} className={`px-4 py-1 text-sm font-bold rounded-md transition-all ${activeTab === 'documents' ? 'bg-cyber-purple text-white shadow-lg' : 'text-white/50 hover:text-white'}`}>
               Documents
             </button>
+            <button onClick={() => setActiveTab('tasks')} className={`px-4 py-1 text-sm font-bold rounded-md transition-all flex items-center gap-1.5 ${activeTab === 'tasks' ? 'bg-cyber-purple text-white shadow-lg' : 'text-white/50 hover:text-white'}`}>
+              <ListTodo size={14} /> Tasks
+            </button>
             <button onClick={() => setActiveTab('integrations')} className={`px-4 py-1 text-sm font-bold rounded-md transition-all flex items-center gap-2 ${activeTab === 'integrations' ? 'bg-cyber-purple text-white shadow-lg' : 'text-white/50 hover:text-white'}`}>
               <Plug size={14} /> Integrations
             </button>
@@ -297,6 +301,10 @@ const Project = () => {
           )}
           {activeTab === 'integrations' ? (
             <IntegrationsPanel />
+          ) : activeTab === 'tasks' ? (
+            <div className="h-full overflow-y-auto custom-scrollbar p-2">
+              <TaskBoard projectId={id} />
+            </div>
           ) : documentToView?.type === 'roadmap' ? (
             <RoadmapTimeline document={documentToView} />
           ) : (

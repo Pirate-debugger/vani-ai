@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, Clock, PlayCircle, User, ListTodo } from 'lucide-react';
+import { CheckCircle2, Clock, PlayCircle, User, ListTodo, Plus, RefreshCw } from 'lucide-react';
 
-const TaskBoard = ({ tasks: initialTasks = [], projectId }) => {
+const TaskBoard = ({ tasks: initialTasks = [], projectId, onTaskUpdated }) => {
   const [tasks, setTasks] = useState(initialTasks);
   const [loading, setLoading] = useState(false);
+  const [updatingId, setUpdatingId] = useState(null);
 
   useEffect(() => {
     if (initialTasks && initialTasks.length > 0) {
@@ -11,38 +12,77 @@ const TaskBoard = ({ tasks: initialTasks = [], projectId }) => {
     }
   }, [initialTasks]);
 
-  useEffect(() => {
-    const fetchTasks = async () => {
-      if (!projectId) return;
-      try {
-        setLoading(true);
-        const res = await fetch(`/api/projects/${projectId}/tasks`);
-        if (res.ok) {
-          const data = await res.json();
-          setTasks(data);
-        }
-      } catch (err) {
-        console.error('Failed to fetch tasks for project:', err);
-      } finally {
-        setLoading(false);
+  const fetchTasks = async () => {
+    if (!projectId) return;
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/projects/${projectId}/tasks`, {
+        credentials: 'include'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTasks(data);
       }
-    };
+    } catch (err) {
+      console.error('Failed to fetch tasks for project:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchTasks();
   }, [projectId]);
 
-  const getStatusBadge = (status) => {
+  const handleStatusToggle = async (task) => {
+    const nextStatusMap = {
+      pending: 'in_progress',
+      in_progress: 'done',
+      done: 'pending'
+    };
+    const nextStatus = nextStatusMap[task.status] || 'pending';
+    setUpdatingId(task.id);
+
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: nextStatus })
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        setTasks(prev => prev.map(t => t.id === task.id ? updated : t));
+        if (onTaskUpdated) onTaskUpdated(updated);
+      }
+    } catch (err) {
+      console.error('Failed to update task status:', err);
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const getStatusBadge = (status, isUpdating) => {
+    if (isUpdating) {
+      return (
+        <span className="flex items-center gap-1 text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-bold bg-white/10 text-white/60 animate-pulse">
+          <RefreshCw size={10} className="animate-spin" /> Saving...
+        </span>
+      );
+    }
+
     switch (status) {
       case 'done':
         return (
-          <span className="flex items-center gap-1 text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-bold bg-green-500/15 border border-green-500/30 text-green-400">
+          <span className="flex items-center gap-1 text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-bold bg-green-500/15 border border-green-500/30 text-green-400 hover:bg-green-500/25 transition-all">
             <CheckCircle2 size={12} />
             Done
           </span>
         );
       case 'in_progress':
         return (
-          <span className="flex items-center gap-1 text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-bold bg-cyber-cyan/15 border border-cyber-cyan/30 text-cyber-cyan">
+          <span className="flex items-center gap-1 text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-bold bg-cyber-cyan/15 border border-cyber-cyan/30 text-cyber-cyan hover:bg-cyber-cyan/25 transition-all">
             <PlayCircle size={12} className="animate-pulse" />
             In Progress
           </span>
@@ -50,7 +90,7 @@ const TaskBoard = ({ tasks: initialTasks = [], projectId }) => {
       case 'pending':
       default:
         return (
-          <span className="flex items-center gap-1 text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-bold bg-amber-500/15 border border-amber-500/30 text-amber-400">
+          <span className="flex items-center gap-1 text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-bold bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/25 transition-all">
             <Clock size={12} />
             Pending
           </span>
@@ -72,15 +112,23 @@ const TaskBoard = ({ tasks: initialTasks = [], projectId }) => {
     );
   };
 
+  if (loading && (!tasks || tasks.length === 0)) {
+    return (
+      <div className="w-full glass-panel border-white/5 p-8 rounded-2xl text-center text-white/50 text-xs">
+        <RefreshCw size={20} className="animate-spin mx-auto mb-2 text-cyber-cyan" />
+        Loading tasks...
+      </div>
+    );
+  }
+
   if (!tasks || tasks.length === 0) {
-    if (loading) {
-      return (
-        <div className="w-full glass-panel border-white/5 p-4 rounded-2xl text-center text-white/50 text-xs">
-          Loading tasks...
-        </div>
-      );
-    }
-    return null;
+    return (
+      <div className="w-full glass-panel border-white/5 p-8 rounded-2xl text-center text-white/50 text-xs">
+        <ListTodo size={32} className="mx-auto mb-3 text-white/20" />
+        <p className="font-bold text-white/70 mb-1">No action items found yet</p>
+        <p className="text-white/40">Generate a BRD or PRD to extract implementation tasks automatically, or speak to Vani to create tasks.</p>
+      </div>
+    );
   }
 
   return (
@@ -89,13 +137,22 @@ const TaskBoard = ({ tasks: initialTasks = [], projectId }) => {
         <div className="flex items-center gap-2">
           <ListTodo size={16} className="text-cyber-cyan" />
           <h3 className="text-xs sm:text-sm font-extrabold uppercase tracking-widest text-white/80">
-            Extracted Action Items ({tasks.length})
+            Action Items ({tasks.length})
           </h3>
         </div>
-        <span className="text-[10px] text-white/40 font-mono">Project Tasks</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-white/40 font-mono hidden sm:inline">Click status to cycle</span>
+          <button
+            onClick={fetchTasks}
+            className="p-1 hover:bg-white/10 rounded text-white/40 hover:text-white transition-colors"
+            title="Refresh tasks"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-64 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-80 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
         {tasks.map((task, idx) => (
           <div
             key={task.id || idx}
@@ -123,7 +180,14 @@ const TaskBoard = ({ tasks: initialTasks = [], projectId }) => {
                   {task.assignee || 'Unassigned'}
                 </span>
               </div>
-              <div>{getStatusBadge(task.status)}</div>
+              <button
+                onClick={() => handleStatusToggle(task)}
+                disabled={updatingId === task.id}
+                className="cursor-pointer hover:opacity-80 transition-opacity"
+                title="Click to cycle status"
+              >
+                {getStatusBadge(task.status, updatingId === task.id)}
+              </button>
             </div>
           </div>
         ))}

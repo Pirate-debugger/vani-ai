@@ -15,6 +15,8 @@ import authRoutes from './routes/auth.js';
 import documentRoutes from './routes/document.js';
 import exportRoutes from './routes/export.js';
 import projectRoutes from './routes/project.js';
+import taskRoutes from './routes/task.js';
+import integrationRoutes from './routes/integration.js';
 
 dotenv.config();
 
@@ -53,7 +55,7 @@ app.use(helmet({
   }
 }));
 
-// API Header Optimizations to resolve audit warnings (removes unneeded headers and overrides Vercel must-revalidate cache directives)
+// API Header Optimizations
 app.use('/api', (req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');
   res.removeHeader('Content-Security-Policy');
@@ -62,11 +64,11 @@ app.use('/api', (req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-// Rate Limiting — 60 requests per minute per IP
+// Rate Limiting — 100 requests per minute per IP
 const limiter = rateLimit({
   windowMs: 60000,
-  max: 60,
-  message: { error: 'Too many requests. Please try again in a minute.' }
+  max: 100,
+  message: { error: 'Too many requests. Please try again in a minute.', code: 'RATE_LIMITED', retryable: true }
 });
 app.use('/api/', limiter);
 
@@ -74,11 +76,11 @@ app.use('/api/', limiter);
 app.use(cors({
   origin: true,
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'api-subscription-key']
 }));
 
-// Session Middleware (required for passport + Sarvam key storage)
+// Session Middleware
 app.use(session({
   secret: process.env.SESSION_SECRET || 'vani-dev-secret-change-in-prod',
   resave: false,
@@ -102,7 +104,13 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'online',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    services: {
+      sarvam: Boolean(process.env.SARVAM_API_KEY),
+      tinyfish: Boolean(process.env.TINYFISH_API_KEY),
+      gemini: Boolean(process.env.GEMINI_API_KEY),
+      openai: Boolean(process.env.OPENAI_API_KEY)
+    }
   });
 });
 
@@ -114,8 +122,8 @@ app.use('/api/document', documentRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/project', projectRoutes);
-
-
+app.use('/api/tasks', taskRoutes);
+app.use('/api/integrations', integrationRoutes);
 
 // Serve frontend build (production only — in dev, Vite runs separately)
 const publicDir = path.join(__dirname, 'public');
@@ -129,24 +137,50 @@ if (existsSync(indexHtml)) {
   });
 }
 
-// Error Handler
+// Global Sanitized Error Handler
 app.use((err, req, res, next) => {
-  console.error('Server Error:', err.message);
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal Server Error',
-    details: err.details || null
+  const status = err.status || (err.name === 'ValidationError' ? 400 : 500);
+  console.error(`[API Error] ${req.method} ${req.originalUrl}:`, err.message);
+
+  // In production, do not return database internals or filesystem paths
+  const safeMessage = (status === 500 && process.env.NODE_ENV === 'production')
+    ? 'An unexpected server error occurred. Please try again.'
+    : err.message || 'Internal Server Error';
+
+  res.status(status).json({
+    error: safeMessage,
+    code: err.code || (status === 500 ? 'INTERNAL_SERVER_ERROR' : 'REQUEST_ERROR'),
+    retryable: status >= 500 || status === 429
   });
 });
 
+let server = null;
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
+  server = app.listen(PORT, () => {
     console.log(`=========================================`);
     console.log(` Vani AI Express Backend Running on:      `);
     console.log(` http://localhost:${PORT}                 `);
     console.log(` Mode: ${process.env.SARVAM_API_KEY ? 'Production (Sarvam API)' : 'Simulator Mode'}`);
+    console.log(` TinyFish: ${process.env.TINYFISH_API_KEY ? 'Configured ✓' : 'Not configured'}`);
+    console.log(` Gemini: ${process.env.GEMINI_API_KEY ? 'Configured ✓' : 'Not configured'}`);
     console.log(` Google OAuth: ${process.env.GOOGLE_CLIENT_ID ? 'Configured ✓' : 'Not configured (local auth only)'}`);
     console.log(`=========================================`);
   });
+
+  const handleShutdown = () => {
+    console.log('\nReceived kill signal, shutting down gracefully...');
+    if (server) {
+      server.close(() => {
+        console.log('HTTP server closed.');
+        process.exit(0);
+      });
+    } else {
+      process.exit(0);
+    }
+  };
+
+  process.on('SIGTERM', handleShutdown);
+  process.on('SIGINT', handleShutdown);
 }
 
 export default app;

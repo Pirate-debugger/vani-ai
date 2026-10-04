@@ -134,7 +134,10 @@ const Settings = ({
 
   // Check API key status
   useEffect(() => {
-    fetch('/api/auth/status').then(r => r.json()).then(d => setApiStatus(d.source)).catch(() => {});
+    fetch('/api/auth/status', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => setApiStatus(d.source))
+      .catch(() => {});
   }, []);
 
   const [isVerifyingKey, setIsVerifyingKey] = useState(false);

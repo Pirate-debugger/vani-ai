@@ -5,7 +5,8 @@ import FormData from 'form-data';
 import prisma from '../lib/prisma.js';
 import { decryptKey } from '../lib/crypto.js';
 import { getAIResponse } from '../services/llm.js';
-import { runAgentWorkflow, identifyAgentIntent, extractTasksFromDocument, parseTaskCommand } from '../services/agentService.js';
+import { runAgentWorkflow, identifyAgentIntent, parseTaskCommand } from '../services/agentService.js';
+import { getAuthUser, verifyProjectOwnership, verifyTaskOwnership } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -28,7 +29,7 @@ const upload = multer({
 const getSarvamKey = async (req) => {
   if (req.cachedSarvamKey) return req.cachedSarvamKey;
 
-  const user = req.user || req.session?.localUser;
+  const user = getAuthUser(req);
   if (user && user.id) {
     try {
       const apiKeyRow = await prisma.apiKey.findUnique({
@@ -40,7 +41,7 @@ const getSarvamKey = async (req) => {
         return decrypted;
       }
     } catch (err) {
-      console.error('Error fetching API key from DB:', err);
+      console.error('Error fetching API key from DB:', err.message);
     }
   }
 
@@ -51,7 +52,7 @@ const getSarvamKey = async (req) => {
 const getGeminiKey = async (req) => {
   if (req.cachedGeminiKey) return req.cachedGeminiKey;
 
-  const user = req.user || req.session?.localUser;
+  const user = getAuthUser(req);
   if (user && user.id) {
     try {
       const apiKeyRow = await prisma.apiKey.findUnique({
@@ -63,7 +64,7 @@ const getGeminiKey = async (req) => {
         return decrypted;
       }
     } catch (err) {
-      console.error('Error fetching Gemini API key from DB:', err);
+      console.error('Error fetching Gemini API key from DB:', err.message);
     }
   }
 
@@ -71,30 +72,46 @@ const getGeminiKey = async (req) => {
 };
 
 /**
- * POST /command (mounted under /api/voice)
+ * POST /api/voice/command
  * Accepts multipart audio ('file') or 'transcript' string in body,
- * along with 'projectId' and 'language_code'.
+ * along with optional 'projectId' and 'language_code'.
  */
-router.post('/command', upload.single('file'), async (req, res, next) => {
+router.post('/command', upload.single('file'), async (req, res) => {
   try {
     const file = req.file;
     let { transcript, projectId, language_code } = req.body;
     const langCode = language_code || 'hi-IN';
+    const authUser = getAuthUser(req);
+
+    // If a projectId is provided, verify that the authenticated user owns it
+    if (projectId && authUser && authUser.id) {
+      try {
+        await verifyProjectOwnership(projectId, authUser.id);
+      } catch (authErr) {
+        return res.status(403).json({
+          error: 'Access denied: You do not have permission to access or modify this project.',
+          code: 'FORBIDDEN'
+        });
+      }
+    }
 
     const apiKey = await getSarvamKey(req);
 
     // 1. Get STT transcript if audio provided and no transcript string
     if (!transcript || !transcript.trim()) {
       if (!file) {
-        return res.status(400).json({ error: 'Either audio file or transcript string is required.' });
+        return res.status(400).json({
+          error: 'Either audio file or transcript string is required.',
+          code: 'INVALID_INPUT'
+        });
       }
 
       if (!apiKey) {
         // Simulator mode fallback
         console.log(`[VoiceCommand Simulator STT] Audio size: ${file.size} bytes`);
         const fallbacks = {
-          'hi-IN': 'नमस्ते, मुझे इस प्रोजेक्ट का BRD बनाना है।',
-          'en-IN': 'Hello, create a BRD for this project.',
+          'hi-IN': 'नमस्ते, मुझे इस प्रोजेक्ट का BRD बनाना है और कॉम्पिटिटर्स रिसर्च करो।',
+          'en-IN': 'Hello, create a BRD for this startup and research competitors.',
           'mr-IN': 'नमस्कार, मला या प्रकल्पाचा BRD बनवायचा आहे.'
         };
         transcript = fallbacks[langCode] || fallbacks['en-IN'];
@@ -115,14 +132,18 @@ router.post('/command', upload.single('file'), async (req, res, next) => {
           headers: {
             'api-subscription-key': apiKey,
             ...formData.getHeaders()
-          }
+          },
+          timeout: 20000
         });
         transcript = sttResponse.data.transcript;
       }
     }
 
     if (!transcript || !transcript.trim()) {
-      return res.status(400).json({ error: 'Could not capture transcript from audio.' });
+      return res.status(400).json({
+        error: 'Could not capture transcript from audio. Please try speaking closer to the mic.',
+        code: 'STT_EMPTY'
+      });
     }
 
     const apiKeys = {
@@ -131,10 +152,9 @@ router.post('/command', upload.single('file'), async (req, res, next) => {
       geminiKey: await getGeminiKey(req)
     };
 
-
     // 2. Classify intent
     const agentType = await identifyAgentIntent(transcript, apiKeys);
-    console.log(`[VoiceCommand Router] User prompt: "${transcript}" -> Agent: ${agentType}`);
+    console.log(`[VoiceCommand Router] Prompt: "${transcript}" -> Agent: ${agentType}`);
 
     let documentId = null;
     let responseTasks = [];
@@ -142,7 +162,6 @@ router.post('/command', upload.single('file'), async (req, res, next) => {
 
     // 3. Process based on agentType
     if (agentType === 'task_command') {
-      // Fetch current tasks for project
       const existingTasks = projectId ? await prisma.task.findMany({
         where: { projectId },
         orderBy: { createdAt: 'asc' }
@@ -152,6 +171,9 @@ router.post('/command', upload.single('file'), async (req, res, next) => {
       console.log('[VoiceCommand Task Parsing Result]', parsedCmd);
 
       if (parsedCmd.action === 'assign' && parsedCmd.taskId) {
+        if (authUser && authUser.id) {
+          await verifyTaskOwnership(parsedCmd.taskId, authUser.id);
+        }
         await prisma.task.update({
           where: { id: parsedCmd.taskId },
           data: { assignee: parsedCmd.assignee || null }
@@ -159,6 +181,9 @@ router.post('/command', upload.single('file'), async (req, res, next) => {
         const matched = existingTasks.find(t => t.id === parsedCmd.taskId);
         spokenConfirmationText = `Task '${matched?.title || 'item'}' has been assigned to ${parsedCmd.assignee || 'Unassigned'}.`;
       } else if (parsedCmd.action === 'update_status' && parsedCmd.taskId && parsedCmd.status) {
+        if (authUser && authUser.id) {
+          await verifyTaskOwnership(parsedCmd.taskId, authUser.id);
+        }
         await prisma.task.update({
           where: { id: parsedCmd.taskId },
           data: { status: parsedCmd.status }
@@ -167,34 +192,37 @@ router.post('/command', upload.single('file'), async (req, res, next) => {
         spokenConfirmationText = `Task '${matched?.title || 'item'}' status updated to ${parsedCmd.status}.`;
       } else if (parsedCmd.action === 'list') {
         if (existingTasks.length > 0) {
-          spokenConfirmationText = existingTasks.slice(0, 5).map((t, idx) => 
-            `Task ${idx + 1}: ${t.title}, status ${t.status}`
+          spokenConfirmationText = existingTasks.slice(0, 4).map((t, idx) => 
+            `Task ${idx + 1}: ${t.title} (${t.status})`
           ).join('. ');
         } else {
-          spokenConfirmationText = "There are currently no tasks in this project.";
+          spokenConfirmationText = "Project mein filhaal koi tasks nahi hain.";
         }
       } else {
-        spokenConfirmationText = "I couldn't understand that task command. Please try again.";
+        spokenConfirmationText = "Aapka task command samajh nahi aaya. Kripya dubara bolein.";
       }
 
-      // Re-fetch updated tasks for response payload
       responseTasks = projectId ? await prisma.task.findMany({
         where: { projectId },
         orderBy: { createdAt: 'asc' }
       }) : [];
 
     } else if (agentType !== 'general') {
-      // Document generating agent
+      // Document generating agent (BRD, PRD, Roadmap, etc.)
       const workflowRes = await runAgentWorkflow(projectId, agentType, transcript, [], apiKeys);
       documentId = workflowRes.documentId || null;
       responseTasks = workflowRes.tasks || [];
-      spokenConfirmationText = `Maine aapka ${agentType.toUpperCase()} bana diya hai — ${responseTasks.length} tasks bhi identify kiye hain.`;
+      const taskCount = responseTasks.length;
+      const researchNote = workflowRes.metadata?.researchUsed ? ' aur live market research' : '';
+      spokenConfirmationText = `Aapka ${agentType.toUpperCase()} document ready hai. Maine ${taskCount} action items${researchNote} add kiye hain.`;
     } else {
-      // General fallback chat
+      // General conversational fallback
       const chatRes = await getAIResponse({
         prompt: transcript,
         messages: [],
         langCode,
+        personality: 'respectful',
+        operationType: 'VOICE_RESPONSE',
         ...apiKeys
       });
       spokenConfirmationText = chatRes.response;
@@ -202,9 +230,9 @@ router.post('/command', upload.single('file'), async (req, res, next) => {
 
     // 4. TTS synthesis for spoken response (short summary < 350 chars)
     let audioContent = null;
-    const ttsInputText = spokenConfirmationText.substring(0, 350);
+    const ttsInputText = (spokenConfirmationText || '').substring(0, 350);
 
-    if (apiKey) {
+    if (apiKey && ttsInputText) {
       try {
         let defaultSpeaker = 'anushka';
         if (langCode.startsWith('ta')) defaultSpeaker = 'arya';
@@ -223,13 +251,14 @@ router.post('/command', upload.single('file'), async (req, res, next) => {
           headers: {
             'api-subscription-key': apiKey,
             'Content-Type': 'application/json'
-          }
+          },
+          timeout: 15000
         });
 
         const sarvamData = ttsRes.data;
         audioContent = sarvamData.audios?.[0] || sarvamData.audio_content || null;
       } catch (ttsErr) {
-        console.error('Sarvam TTS Error in VoiceCommand:', ttsErr.response?.data || ttsErr.message);
+        console.error('Sarvam TTS Error in VoiceCommand:', ttsErr.message);
       }
     }
 
@@ -243,10 +272,10 @@ router.post('/command', upload.single('file'), async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error('Voice Command Endpoint Error:', error);
-    return res.status(500).json({
-      error: 'Voice command processing failed',
-      details: error.message
+    console.error('Voice Command Endpoint Error:', error.message);
+    return res.status(error.status || 500).json({
+      error: error.message || 'Voice command processing failed',
+      code: error.code || 'VOICE_COMMAND_FAILED'
     });
   }
 });

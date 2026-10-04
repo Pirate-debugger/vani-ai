@@ -338,6 +338,7 @@ const Assistant = ({
       const res = await fetch(`${API_BASE}/voice/interpret`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           audioBase64,
           lang1: currentLang,

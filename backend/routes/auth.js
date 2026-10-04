@@ -169,8 +169,8 @@ router.post('/local-login', (req, res) => {
   const { email, name, isGuest } = req.body;
   if (!email && !isGuest) return res.status(400).json({ error: 'Email required' });
   const user = isGuest
-    ? { name: 'Guest', email: 'guest@vani.ai', isGuest: true, provider: 'guest' }
-    : { name: name || email.split('@')[0], email, provider: 'local' };
+    ? { id: 'guest_user', name: 'Guest', email: 'guest@vani.ai', isGuest: true, provider: 'guest' }
+    : { id: email.toLowerCase().replace(/[^a-zA-Z0-9_]/g, '_'), name: name || email.split('@')[0], email: email.toLowerCase(), provider: 'local' };
   req.session.localUser = user;
   res.json({ user });
 });

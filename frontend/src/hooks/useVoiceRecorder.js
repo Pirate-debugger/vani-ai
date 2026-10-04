@@ -121,7 +121,7 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
       const ext = (mimeType || 'audio/webm').split('/')[1]?.split(';')[0] || 'webm';
       formData.append('file', blob, `audio.${ext}`);
       formData.append('language_code', languageCode);
-      const res = await fetch(`${API_BASE}/voice/stt`, { method: 'POST', body: formData });
+      const res = await fetch(`${API_BASE}/voice/stt`, { method: 'POST', credentials: 'include', body: formData });
       if (!res.ok) throw new Error(`STT API error: ${res.status}`);
       const data = await res.json();
       return data.transcript || null;
@@ -281,6 +281,7 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
       const res = await fetch(`${API_BASE}/voice/tts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           text: text.substring(0, 500),
           target_language_code: langCode,
@@ -403,6 +404,7 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
 
       const res = await fetch(`${API_BASE}/voice/command`, {
         method: 'POST',
+        credentials: 'include',
         body: formData
       });
 
@@ -466,7 +468,7 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
   // resetAudioBlob — allows components to clear blob after processing
   const resetAudioBlob = useCallback(() => setAudioBlob(null), []);
 
-  const waitForTranscript = useCallback(() => {
+  const waitForTranscript = useCallback((timeoutMs = 5000) => {
     return new Promise((resolve, reject) => {
       if (transcriptRef.current.trim()) {
         resolve(transcriptRef.current.trim());
@@ -478,7 +480,7 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
           transcriptPromiseRef.current.reject(new Error('Timeout waiting for transcript'));
           transcriptPromiseRef.current = null;
         }
-      }, 5000); // Increased timeout to 5 seconds to match VAD 3-5s timeout
+      }, timeoutMs);
     });
   }, []);
 

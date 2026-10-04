@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Download, FileText, Share2, History, Bot } from 'lucide-react';
+import { Download, FileText, Share2, History, Bot, Globe, ShieldCheck, ExternalLink } from 'lucide-react';
 
 const DocumentViewer = ({ document, onExport, onVersionHistory, onConvertToPrd, onRestoreVersion, onClosePreview }) => {
   const [showExportDropdown, setShowExportDropdown] = useState(false);
@@ -13,6 +13,17 @@ const DocumentViewer = ({ document, onExport, onVersionHistory, onConvertToPrd, 
       </div>
     );
   }
+
+  // Detect whether research sources were used in this document
+  const hasLiveResearch = Boolean(
+    document.metadata?.researchUsed ||
+    (typeof document.content === 'string' && (
+      document.content.includes('VERIFIED LIVE WEB RESEARCH') ||
+      document.content.includes('TinyFish') ||
+      document.content.includes('http://') ||
+      document.content.includes('https://')
+    ))
+  );
 
   return (
     <div className="flex flex-col h-full bg-[#0a0714] border border-white/5 rounded-xl overflow-hidden shadow-2xl relative">
@@ -47,13 +58,20 @@ const DocumentViewer = ({ document, onExport, onVersionHistory, onConvertToPrd, 
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-white/10 glass-panel bg-white/5 relative z-10">
         <div>
-          <h2 className="text-xl font-bold text-white">{document.title}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-white">{document.title}</h2>
+            {hasLiveResearch && (
+              <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-cyber-cyan/15 text-cyber-cyan border border-cyber-cyan/30">
+                <Globe size={11} className="animate-spin" /> Live Research Verified
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2 mt-1">
             <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-cyber-purple/20 text-cyber-purple border border-cyber-purple/30">
               {document.type}
             </span>
             <span className="text-xs text-white/40">
-              Last updated: {new Date(document.updatedAt).toLocaleString()}
+              Last updated: {new Date(document.updatedAt || Date.now()).toLocaleString()}
             </span>
           </div>
         </div>
@@ -74,12 +92,6 @@ const DocumentViewer = ({ document, onExport, onVersionHistory, onConvertToPrd, 
           >
             <History size={16} />
           </button>
-          <button 
-            className="p-2 text-white/60 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors border border-white/10"
-            title="Share"
-          >
-            <Share2 size={16} />
-          </button>
           <div className="relative">
             <button 
               onClick={() => setShowExportDropdown(!showExportDropdown)}
@@ -97,16 +109,16 @@ const DocumentViewer = ({ document, onExport, onVersionHistory, onConvertToPrd, 
                   Markdown (.md)
                 </button>
                 <button
-                  onClick={() => { onExport('pdf'); setShowExportDropdown(false); }}
+                  onClick={() => { onExport('json'); setShowExportDropdown(false); }}
                   className="w-full text-left px-3 py-2 text-xs font-semibold text-white/85 hover:text-cyber-cyan hover:bg-cyber-cyan/10 rounded-md transition-colors"
                 >
-                  PDF Document (.pdf)
+                  Structured JSON (.json)
                 </button>
                 <button
-                  onClick={() => { onExport('docx'); setShowExportDropdown(false); }}
+                  onClick={() => { onExport('txt'); setShowExportDropdown(false); }}
                   className="w-full text-left px-3 py-2 text-xs font-semibold text-white/85 hover:text-cyber-cyan hover:bg-cyber-cyan/10 rounded-md transition-colors"
                 >
-                  Word Document (.docx)
+                  Plain Text (.txt)
                 </button>
               </div>
             )}

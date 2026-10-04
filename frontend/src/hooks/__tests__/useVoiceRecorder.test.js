@@ -18,7 +18,7 @@ describe('useVoiceRecorder', () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useVoiceRecorder());
     
-    const promise = result.current.waitForTranscript();
+    const promise = result.current.waitForTranscript(3000);
     
     act(() => {
       vi.advanceTimersByTime(3000);
