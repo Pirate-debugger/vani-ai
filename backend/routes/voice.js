@@ -367,10 +367,10 @@ router.post('/bridge', async (req, res, next) => {
     // Step 4: TTS in targetLang
     let audioContent;
     try {
-      let defaultSpeaker = 'anushka';
-      if (targetLang.startsWith('ta')) defaultSpeaker = 'arya';
-      else if (targetLang.startsWith('en')) defaultSpeaker = 'abhilash';
-      else if (targetLang.startsWith('mr')) defaultSpeaker = 'manisha';
+      let defaultSpeaker = 'priya';
+      if (targetLang.startsWith('ta')) defaultSpeaker = 'kavitha';
+      else if (targetLang.startsWith('en')) defaultSpeaker = 'neha';
+      else if (targetLang.startsWith('mr')) defaultSpeaker = 'ritu';
 
       const ttsRes = await axios.post('https://api.sarvam.ai/text-to-speech', {
         text: llmReply.substring(0, 500),
@@ -514,10 +514,10 @@ router.post('/interpret', async (req, res, next) => {
     let audioContent = null;
     if (supportedTTSLanguages.includes(targetLang)) {
       try {
-        let defaultSpeaker = 'anushka';
-        if (targetLang.startsWith('ta')) defaultSpeaker = 'arya';
-        else if (targetLang.startsWith('en')) defaultSpeaker = 'abhilash';
-        else if (targetLang.startsWith('mr')) defaultSpeaker = 'manisha';
+        let defaultSpeaker = 'priya';
+        if (targetLang.startsWith('ta')) defaultSpeaker = 'kavitha';
+        else if (targetLang.startsWith('en')) defaultSpeaker = 'neha';
+        else if (targetLang.startsWith('mr')) defaultSpeaker = 'ritu';
 
         const ttsRes = await axios.post('https://api.sarvam.ai/text-to-speech', {
           text: translatedText.substring(0, 500),

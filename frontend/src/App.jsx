@@ -66,7 +66,7 @@ const AppInner = () => {
   const getProfile     = () => { try { return JSON.parse(localStorage.getItem('vani_profile') || 'null'); } catch { return null; } };
   const getSaveHistory = () => localStorage.getItem('vani_save_history') !== 'false';
   const getAutoSpeak   = () => localStorage.getItem('vani_autospeak') !== 'false';
-  const getSpeaker     = () => localStorage.getItem('vani_speaker') || 'anushka';
+  const getSpeaker     = () => localStorage.getItem('vani_speaker') || 'priya';
 
   // Restore chat session from sidebar
   const handleLoadSession = useCallback((sessionMessages, sessionLang, newSessionId) => {
@@ -141,12 +141,13 @@ const AppInner = () => {
     return () => window.removeEventListener('keydown', handler);
   }, [voiceRecorder]);
 
-  const onSubmitPrompt = async (promptText) => {
+  const onSubmitPrompt = async (promptText, agentType = null) => {
     try {
       const formattedHistory = messages.map(m => ({ role: m.role, content: m.content }));
       const payload = {
         prompt: promptText,
         messages: [...formattedHistory, { role: 'user', content: promptText }],
+        agentType: agentType || undefined,
         language_code: currentLang,
         personality,
         history: formattedHistory,

@@ -310,6 +310,7 @@ const Project = () => {
           ) : (
             <DocumentViewer 
               document={documentToView} 
+              projectTasks={project?.tasks || []}
               onExport={handleExport}
               onVersionHistory={() => setShowVersionHistory(!showVersionHistory)}
               onConvertToPrd={selectedDoc?.type === 'brd' ? handleConvertToPrd : null}

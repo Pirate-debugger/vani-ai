@@ -76,7 +76,7 @@ RETURN YOUR OUTPUT STRICTLY AS A VALID JSON OBJECT WITH THIS EXACT SCHEMA (NO MA
   }
 }`;
 
-const AGENT_SYSTEM_PROMPTS = {
+export const AGENT_SYSTEM_PROMPTS = {
   idea_discovery: `You are an Idea Discovery Agent. Your goal is to refine the user's startup concept and identify the problem statement and target audience.
 Return the output STRICTLY as a JSON object with schema:
 {

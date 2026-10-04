@@ -79,7 +79,12 @@ export async function synthesizeSpeech(text, options = {}) {
   if (targetLanguage.startsWith('ta')) defaultSpeaker = 'kavitha';
   else if (targetLanguage.startsWith('mr')) defaultSpeaker = 'ritu';
   else if (targetLanguage.startsWith('en')) defaultSpeaker = 'neha';
-  const speaker = options.speaker || defaultSpeaker;
+  
+  const VALID_BULBUL_SPEAKERS = new Set([
+    'priya', 'ritu', 'neha', 'pooja', 'rohan', 'aditya', 'rahul', 'kavitha', 'simran', 'ajay', 'ishaan'
+  ]);
+  const requestedSpeaker = options.speaker?.toLowerCase();
+  const speaker = (requestedSpeaker && VALID_BULBUL_SPEAKERS.has(requestedSpeaker)) ? requestedSpeaker : defaultSpeaker;
   const speechSampleRate = options.speechSampleRate || 8000;
   const model = options.model || SARVAM_MODELS.TTS;
 

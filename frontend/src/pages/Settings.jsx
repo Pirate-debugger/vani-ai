@@ -31,13 +31,14 @@ const LANGUAGES = [
 ];
 
 const SPEAKERS = [
-  { value: 'anushka', label: 'Anushka', sub: 'Female · Hindi' },
-  { value: 'abhilash', label: 'Abhilash', sub: 'Male · English' },
-  { value: 'manisha', label: 'Manisha', sub: 'Female · Marathi' },
-  { value: 'vidya', label: 'Vidya', sub: 'Female · Universal' },
-  { value: 'arya', label: 'Arya', sub: 'Female · Tamil' },
-  { value: 'karun', label: 'Karun', sub: 'Male · Universal' },
-  { value: 'hitesh', label: 'Hitesh', sub: 'Male · Universal' },
+  { value: 'priya', label: 'Priya', sub: 'Female · Hindi / Indic' },
+  { value: 'neha', label: 'Neha', sub: 'Female · English / Indic' },
+  { value: 'ritu', label: 'Ritu', sub: 'Female · Marathi / Indic' },
+  { value: 'kavitha', label: 'Kavitha', sub: 'Female · Tamil / Indic' },
+  { value: 'pooja', label: 'Pooja', sub: 'Female · Bengali / Indic' },
+  { value: 'rohan', label: 'Rohan', sub: 'Male · Hindi / Indic' },
+  { value: 'aditya', label: 'Aditya', sub: 'Male · Gujarati / Indic' },
+  { value: 'rahul', label: 'Rahul', sub: 'Male · Universal Indic' },
 ];
 
 const INDIAN_STATES = [
@@ -97,8 +98,10 @@ const Settings = ({
   // Language
   const [secondaryLang, setSecondaryLang] = useState(() => localStorage.getItem('vani_secondary_lang') || 'en-IN');
 
-  // Voice
-  const [speaker, setSpeaker] = useState(() => localStorage.getItem('vani_speaker') || 'anushka');
+  const [speaker, setSpeaker] = useState(() => {
+    const saved = localStorage.getItem('vani_speaker');
+    return (saved && saved !== 'anushka' && saved !== 'abhilash' && saved !== 'manisha') ? saved : 'priya';
+  });
   const [autoSpeak, setAutoSpeak] = useState(() => localStorage.getItem('vani_autospeak') !== 'false');
   const [vadMode, setVadMode] = useState(() => localStorage.getItem('vani_vad') === 'true');
 

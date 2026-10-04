@@ -2,6 +2,10 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
+const MAX_RECORDING_MS = 5000; // Hard safety limit: max 5 seconds
+const SILENCE_TIMEOUT_MS = 1400; // ~1.4s silence triggers auto-stop
+const SPEECH_THRESHOLD = 15; // Audio energy threshold for VAD
+
 export const useVoiceRecorder = (languageCode = 'hi-IN') => {
   const [isRecording, setIsRecording]   = useState(false);
   const [transcript, setTranscript]     = useState('');
@@ -10,6 +14,17 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
   const [audioMimeType, setAudioMimeType] = useState('audio/webm');
   const [isSttLoading, setIsSttLoading] = useState(false);
   const [isSpeaking, setIsSpeaking]     = useState(false);
+  
+  // Voice State Machine & Session
+  const [voiceState, setVoiceState]     = useState('idle'); // 'idle' | 'pressing' | 'listening' | 'finalizing' | 'transcribing' | 'routing' | 'thinking' | 'researching' | 'executing' | 'speaking' | 'error'
+  const [talkMode, setTalkMode]         = useState('tap'); // 'tap' | 'hold' | 'hands_free'
+  const [voiceSession, setVoiceSession] = useState(null);
+
+  const voiceSessionRef  = useRef(null);
+  const maxTimerRef      = useRef(null);
+  const silenceTimerRef  = useRef(null);
+  const vadIntervalRef   = useRef(null);
+  const hasSpokenRef     = useRef(false);
 
   // Safari-compatible MIME type detection
   const getSupportedMimeType = () => {
@@ -133,8 +148,9 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     }
   }, [languageCode]);
 
-  // ─── Start Recording (with haptic) ──────────────────────────────────────────
-  const startRecording = async () => {
+  // ─── Start Recording (with haptic, TTS cancel & safety timers) ─────────────────
+  const startRecording = async (activeMode) => {
+    cancelSpeech(); // Rule 24: TTS interruption - immediately cancel any active speech
     navigator.vibrate?.(50); // Short haptic pulse on start
     try {
       setTranscript('');
@@ -142,6 +158,22 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
       transcriptRef.current = '';
       audioChunksRef.current = [];
       setAudioBlob(null);
+
+      const mode = activeMode || talkMode;
+      const newSession = {
+        sessionId: `voice_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        mode,
+        startedAt: Date.now(),
+        stoppedAt: null,
+        transcript: '',
+        audioBlob: null,
+        language: languageCode,
+        stopReason: null,
+        state: 'listening'
+      };
+      voiceSessionRef.current = newSession;
+      setVoiceSession(newSession);
+      setVoiceState('listening');
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -167,6 +199,12 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
       };
 
       recorder.onstop = async () => {
+        setVoiceState('transcribing');
+        if (voiceSessionRef.current) {
+          voiceSessionRef.current.state = 'transcribing';
+          setVoiceSession({ ...voiceSessionRef.current });
+        }
+
         const blob = new Blob(audioChunksRef.current, { type: actualMimeType });
         const browserTranscript = transcriptRef.current.trim();
         let finalTranscript = browserTranscript;
@@ -179,6 +217,14 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
           }
         }
         setAudioBlob(blob);
+
+        if (voiceSessionRef.current) {
+          voiceSessionRef.current.transcript = finalTranscript;
+          voiceSessionRef.current.audioBlob = blob;
+          voiceSessionRef.current.state = 'routing';
+          setVoiceSession({ ...voiceSessionRef.current });
+        }
+        setVoiceState('routing');
         
         if (transcriptPromiseRef.current) {
           transcriptPromiseRef.current.resolve(finalTranscript);
@@ -191,15 +237,64 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
         try { recognitionRef.current.start(); } catch (e) { /* non-fatal */ }
       }
       setIsRecording(true);
+
+      // Rule 16: Hard safety limit - strictly max 5 seconds
+      if (maxTimerRef.current) clearTimeout(maxTimerRef.current);
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      if (vadIntervalRef.current) clearInterval(vadIntervalRef.current);
+      hasSpokenRef.current = false;
+
+      maxTimerRef.current = setTimeout(() => {
+        console.log('[Voice Engine] 5-second hard limit reached. Auto-stopping.');
+        stopRecording('max_duration_5s');
+      }, MAX_RECORDING_MS);
+
+      // Rule 16 & 19: VAD silence detection (~1.4s of silence after speech)
+      const dataArray = new Uint8Array(ana.frequencyBinCount);
+      vadIntervalRef.current = setInterval(() => {
+        if (!ana) return;
+        ana.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+        const avg = sum / dataArray.length;
+
+        if (avg > SPEECH_THRESHOLD) {
+          hasSpokenRef.current = true;
+          if (silenceTimerRef.current) {
+            clearTimeout(silenceTimerRef.current);
+            silenceTimerRef.current = null;
+          }
+        } else if (hasSpokenRef.current && !silenceTimerRef.current) {
+          silenceTimerRef.current = setTimeout(() => {
+            console.log('[Voice Engine] Silence detected (~1.4s). Auto-stopping recording.');
+            stopRecording('silence_detected');
+          }, SILENCE_TIMEOUT_MS);
+        }
+      }, 80);
+
     } catch (err) {
       console.error('Failed to access microphone:', err);
+      setVoiceState('error');
       alert('Microphone access denied or unsupported. Please check device permissions.');
     }
   };
 
-  // ─── Stop Recording (with haptic) ─────────────────────────────────────────────
-  const stopRecording = () => {
+  // ─── Stop Recording (with cleanup & haptic) ───────────────────────────────────
+  const stopRecording = (reason = 'user_action') => {
     navigator.vibrate?.([30, 30, 30]); // Triple pulse on stop
+
+    if (maxTimerRef.current) { clearTimeout(maxTimerRef.current); maxTimerRef.current = null; }
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+    if (vadIntervalRef.current) { clearInterval(vadIntervalRef.current); vadIntervalRef.current = null; }
+
+    if (voiceSessionRef.current) {
+      voiceSessionRef.current.stoppedAt = Date.now();
+      voiceSessionRef.current.stopReason = reason;
+      voiceSessionRef.current.state = 'finalizing';
+      setVoiceSession({ ...voiceSessionRef.current });
+    }
+    setVoiceState('finalizing');
+
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
@@ -219,6 +314,25 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     }
     setIsRecording(false);
   };
+
+  // Rule 21: Complete voice cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (maxTimerRef.current) clearTimeout(maxTimerRef.current);
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      if (vadIntervalRef.current) clearInterval(vadIntervalRef.current);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try { mediaRecorderRef.current.stop(); } catch (e) {}
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        try { audioContextRef.current.close(); } catch (e) {}
+      }
+      cancelSpeech();
+    };
+  }, []);
 
   // ─── cancelSpeech: stops both backend audio and browser synthesis ─────────────
   const cancelSpeech = () => {
@@ -506,6 +620,13 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     startSpeechRecognition,
     stopSpeechRecognition,
     sendVoiceCommand,
+    voiceState,
+    setVoiceState,
+    voiceSession,
+    talkMode,
+    setTalkMode,
+    MAX_RECORDING_MS,
+    SILENCE_TIMEOUT_MS,
     // Exports for testing
     getSupportedMimeType,
     submitAudioToSTT,

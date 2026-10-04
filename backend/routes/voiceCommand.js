@@ -234,10 +234,10 @@ router.post('/command', upload.single('file'), async (req, res) => {
 
     if (apiKey && ttsInputText) {
       try {
-        let defaultSpeaker = 'anushka';
-        if (langCode.startsWith('ta')) defaultSpeaker = 'arya';
-        else if (langCode.startsWith('en')) defaultSpeaker = 'abhilash';
-        else if (langCode.startsWith('mr')) defaultSpeaker = 'manisha';
+        let defaultSpeaker = 'priya';
+        if (langCode.startsWith('ta')) defaultSpeaker = 'kavitha';
+        else if (langCode.startsWith('en')) defaultSpeaker = 'neha';
+        else if (langCode.startsWith('mr')) defaultSpeaker = 'ritu';
 
         const ttsRes = await axios.post('https://api.sarvam.ai/text-to-speech', {
           text: ttsInputText,
