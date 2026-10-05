@@ -32,7 +32,8 @@ import {
   Settings,
   Flame,
   Code2,
-  ListTodo
+  ListTodo,
+  CheckSquare
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
