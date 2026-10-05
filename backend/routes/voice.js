@@ -61,25 +61,10 @@ router.post('/stt', upload.single('file'), async (req, res, next) => {
     const apiKey = await getSarvamKey(req);
 
     if (!apiKey) {
-      // --- SIMULATOR MODE FALLBACK ---
-      console.log(`[STT Simulator] Received audio of size: ${file.size} bytes. Language: ${languageCode}`);
-      // Simulate transcription delay
-      await new Promise(resolve => setTimeout(resolve, 800));
-
-      // Standard Indian locale fallback prompts
-      const fallbacks = {
-        'hi-IN': 'नमस्ते, मुझे एक अच्छा पीजी ढूंढना है।',
-        'en-IN': 'Hello, I want to find a job or look for government schemes.',
-        'mr-IN': 'नमस्कार, मला नवीन सरकारी योजनांबद्दल माहिती हवी आहे.',
-        'ta-IN': 'வணக்கம், எனக்கு தங்குவதற்கு நல்ல பிஜி வேண்டும்.'
-      };
-
-      return res.json({
-        transcript: fallbacks[languageCode] || fallbacks['en-IN'],
-        model: 'saaras:v4-simulated',
-        language_code: languageCode,
-        confidence: 0.96,
-        simulated: true
+      return res.status(503).json({
+        error: 'Sarvam API key is not configured for Speech-to-Text.',
+        code: 'PROVIDER_NOT_CONFIGURED',
+        provider: 'sarvam'
       });
     }
 
@@ -144,17 +129,10 @@ router.post('/tts', async (req, res, next) => {
     const apiKey = await getSarvamKey(req);
 
     if (!apiKey) {
-      // --- SIMULATOR MODE FALLBACK ---
-      console.log(`[TTS Simulator] Generating voice for: "${text.substring(0, 30)}..." in ${langCode}`);
-      
-      // We will signal the front-end to use its client-side Web Speech API Synthesis fallback,
-      // which is incredibly fast, zero latency, and speaks in the correct local accent!
-      return res.json({
-        audio_content: null,
-        simulated: true,
-        text: text,
-        language_code: langCode,
-        message: 'Simulator mode active. Client-side Web Speech API Synthesis is recommended for local voice feedback.'
+      return res.status(503).json({
+        error: 'Sarvam API key is not configured for voice synthesis.',
+        code: 'PROVIDER_NOT_CONFIGURED',
+        provider: 'sarvam'
       });
     }
 
@@ -216,39 +194,10 @@ router.post('/translate', async (req, res, next) => {
     const apiKey = await getSarvamKey(req);
 
     if (!apiKey) {
-      // --- SIMULATOR MODE FALLBACK ---
-      console.log(`[Translation Simulator] Translating: "${input.substring(0, 35)}" from ${srcLang} to ${tgtLang}`);
-      
-      // Basic rules/mock translation dictionary for clean dashboard demo
-      const mockDictionary = {
-        'Find a PG nearby': {
-          'hi-IN': 'आस-पास एक पीजी (Paying Guest) खोजें।',
-          'mr-IN': 'जवळपास पीजी (Paying Guest) शोधा.',
-          'ta-IN': 'அருகிலுள்ள ஒரு பிஜி தங்குமிடத்தைக் கண்டறியவும்.'
-        },
-        'Tell me about government schemes': {
-          'hi-IN': 'मुझे सरकारी योजनाओं के बारे में बताएं।',
-          'mr-IN': 'मला सरकारी योजनांबद्दल सांगा.',
-          'ta-IN': 'அரசு திட்டங்கள் பற்றி எனக்கு கூறுங்கள்.'
-        },
-        'Jobs for freshers': {
-          'hi-IN': 'फ्रेशर्स के लिए उपलब्ध नौकरियां।',
-          'mr-IN': 'फ्रेशर्ससाठी नोकऱ्या.',
-          'ta-IN': 'புதியவர்களுக்கான வேலைகள்.'
-        }
-      };
-
-      let translatedText = `[Simulated Translation to ${tgtLang}]: ${input}`;
-      if (mockDictionary[input] && mockDictionary[input][tgtLang]) {
-        translatedText = mockDictionary[input][tgtLang];
-      }
-
-      return res.json({
-        translated_text: translatedText,
-        source_language_code: srcLang,
-        target_language_code: tgtLang,
-        model: 'mayura:v1-simulated',
-        simulated: true
+      return res.status(503).json({
+        error: 'Sarvam API key is not configured for translation.',
+        code: 'PROVIDER_NOT_CONFIGURED',
+        provider: 'sarvam'
       });
     }
 
@@ -409,28 +358,10 @@ router.post('/interpret', async (req, res, next) => {
     if (!audioBase64) return res.status(400).json({ error: 'audioBase64 is required.' });
 
     if (!apiKey) {
-      console.log(`[Interpret Simulator] Simulating interpreter mode ${lang1} <-> ${lang2}`);
-      const mockTranscript = "नमस्ते, मुझे लाइव अनुवाद का परीक्षण करना है।";
-      const mockTranslations = {
-        'hi-IN': 'नमस्ते, क्या हाल है?',
-        'en-IN': 'Hello, I want to test live translation.',
-        'mr-IN': 'नमस्कार, मला लाईव्ह भाषांतराची चाचणी करायची आहे.',
-        'ta-IN': 'வணக்கம், நேரலை மொழிபெயர்ப்பை சோதிக்க விரும்புகிறேன்.',
-        'te-IN': 'నమస్కారం, నేను ప్రత్యక్ష అనువాదాన్ని పరీక్షించాలనుకుంటున్నాను.'
-      };
-
-      const sourceLang = lang1 || 'hi-IN';
-      const targetLang = lang2 || 'en-IN';
-      const translatedText = mockTranslations[targetLang] || `[Simulated ${targetLang}]: ${mockTranscript}`;
-
-      return res.json({
-        transcript: mockTranscript,
-        translatedText: translatedText,
-        audioContent: null,
-        sourceLang,
-        targetLang,
-        detectedLanguage: sourceLang,
-        simulated: true
+      return res.status(503).json({
+        error: 'Sarvam API key is not configured for interpreter mode.',
+        code: 'PROVIDER_NOT_CONFIGURED',
+        provider: 'sarvam'
       });
     }
 

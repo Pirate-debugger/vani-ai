@@ -6,7 +6,7 @@ let clientInstance = null;
  * Checks if TinyFish API Key is configured in backend environment or passed key
  */
 export const isTinyFishConfigured = (overrideKey) => {
-  const key = overrideKey || process.env.TINYFISH_API_KEY;
+  const key = overrideKey !== undefined ? overrideKey : process.env.TINYFISH_API_KEY;
   return Boolean(key && key.trim());
 };
 
@@ -14,7 +14,7 @@ export const isTinyFishConfigured = (overrideKey) => {
  * Returns a cached or new TinyFish client instance
  */
 export const getTinyFishClient = (overrideKey) => {
-  const key = (overrideKey || process.env.TINYFISH_API_KEY || '').trim();
+  const key = (overrideKey !== undefined ? overrideKey : (process.env.TINYFISH_API_KEY || '')).trim();
   if (!key) return null;
   if (!clientInstance || overrideKey) {
     const client = new TinyFish({ apiKey: key });
@@ -51,7 +51,7 @@ export const searchWeb = async (query, options = {}) => {
     return { success: false, available: false, results: [], error: 'Search query is required' };
   }
 
-  const apiKey = options.apiKey || options.tinyfishKey;
+  const apiKey = options.apiKey !== undefined ? options.apiKey : (options.tinyfishKey !== undefined ? options.tinyfishKey : process.env.TINYFISH_API_KEY);
   const client = getTinyFishClient(apiKey);
   if (!client) {
     return {
@@ -118,7 +118,7 @@ export const fetchWeb = async (url, options = {}) => {
     return { success: false, available: false, content: null, error: 'URL is required' };
   }
 
-  const apiKey = options.apiKey || options.tinyfishKey;
+  const apiKey = options.apiKey !== undefined ? options.apiKey : (options.tinyfishKey !== undefined ? options.tinyfishKey : process.env.TINYFISH_API_KEY);
   const client = getTinyFishClient(apiKey);
   if (!client) {
     return {
@@ -150,11 +150,13 @@ export const fetchWeb = async (url, options = {}) => {
 
     const result = response?.results?.[0] || response?.[0] || response || null;
     const content = result?.content || result?.markdown || result?.text || null;
+    const title = result?.title || result?.name || null;
 
     return {
-      success: true,
-      available: true,
+      success: Boolean(content),
+      available: Boolean(content),
       url,
+      title,
       content,
       domain: extractDomain(url)
     };
@@ -174,7 +176,7 @@ export const fetchWeb = async (url, options = {}) => {
  * Runs a browser-based agent goal on a target website
  */
 export const runWebAgent = async (url, goal, options = {}) => {
-  const apiKey = options.apiKey || options.tinyfishKey;
+  const apiKey = options.apiKey !== undefined ? options.apiKey : (options.tinyfishKey !== undefined ? options.tinyfishKey : process.env.TINYFISH_API_KEY);
   const client = getTinyFishClient(apiKey);
   if (!client) {
     return {
@@ -407,7 +409,7 @@ export const extractEvidenceObjects = (sourcesWithContent = []) => {
  * Research Questions -> TinyFish Search -> Rank Results -> TinyFish Fetch -> Extract Evidence -> Grounded Output
  */
 export const executeResearchPipeline = async (userIdeaOrPrompt, options = {}) => {
-  const apiKey = options.apiKey || options.tinyfishKey;
+  const apiKey = options.apiKey !== undefined ? options.apiKey : (options.tinyfishKey !== undefined ? options.tinyfishKey : process.env.TINYFISH_API_KEY);
   if (!isTinyFishConfigured(apiKey)) {
     console.log('[TinyFish Pipeline] TinyFish not configured. Proceeding without live research.');
     return {

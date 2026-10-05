@@ -165,14 +165,48 @@ router.post('/logout', (req, res, next) => {
 // ─── Guest / Legacy Local Login (kept for backward compatibility) ──────────
 
 // POST /api/auth/local-login
-router.post('/local-login', (req, res) => {
-  const { email, name, isGuest } = req.body;
-  if (!email && !isGuest) return res.status(400).json({ error: 'Email required' });
-  const user = isGuest
-    ? { id: 'guest_user', name: 'Guest', email: 'guest@vani.ai', isGuest: true, provider: 'guest' }
-    : { id: email.toLowerCase().replace(/[^a-zA-Z0-9_]/g, '_'), name: name || email.split('@')[0], email: email.toLowerCase(), provider: 'local' };
-  req.session.localUser = user;
-  res.json({ user });
+router.post('/local-login', async (req, res) => {
+  try {
+    const { email, name, isGuest } = req.body;
+    if (!email && !isGuest) return res.status(400).json({ error: 'Email required' });
+
+    const userId = isGuest
+      ? 'guest_user'
+      : (email ? email.toLowerCase().replace(/[^a-zA-Z0-9_]/g, '_') : 'local_user');
+    const userEmail = isGuest ? 'guest@vani.ai' : (email ? email.toLowerCase() : 'user@local.ai');
+    const userName = name || (isGuest ? 'Guest User' : userEmail.split('@')[0]);
+
+    let finalId = userId;
+    if (prisma?.user?.upsert) {
+      try {
+        const dbUser = await prisma.user.upsert({
+          where: { email: userEmail },
+          update: { name: userName },
+          create: {
+            id: userId,
+            email: userEmail,
+            name: userName
+          }
+        });
+        if (dbUser?.id) finalId = dbUser.id;
+      } catch (dbErr) {
+        console.warn('[Auth Local Login] DB user upsert warn:', dbErr.message);
+      }
+    }
+
+    const user = {
+      id: finalId,
+      name: userName,
+      email: userEmail,
+      isGuest: Boolean(isGuest),
+      provider: isGuest ? 'guest' : 'local'
+    };
+    req.session.localUser = user;
+    res.json({ user });
+  } catch (err) {
+    console.error('[Auth Local Login Error]:', err.message);
+    res.status(500).json({ error: 'Local login initialization failed', details: err.message });
+  }
 });
 
 // ─── API Key management (database-backed) ───────────────────────────────────

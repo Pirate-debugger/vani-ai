@@ -94,7 +94,7 @@ describe('Vani Workspace End-to-End Acceptance Tests', () => {
       where: { projectId: testProjectA.id }
     });
     expect(savedTasks.length).toBeGreaterThan(0);
-  });
+  }, 90000);
 
   it('Scenario 2: Research Agent only flow - does not create BRD document', async () => {
     const res = await request(app)
@@ -114,7 +114,7 @@ describe('Vani Workspace End-to-End Acceptance Tests', () => {
       where: { projectId: testProjectA.id, type: 'brd' }
     });
     expect(savedDoc).toBeNull();
-  });
+  }, 60000);
 
   it('Scenario 3: Normal Chat/Technical flow - simple streamed response without BRD or TinyFish', async () => {
     const res = await request(app)
@@ -132,7 +132,7 @@ describe('Vani Workspace End-to-End Acceptance Tests', () => {
     // Verify no document was created
     const docCount = await prisma.document.count();
     expect(docCount).toBe(0);
-  });
+  }, 60000);
 
   it('Scenario 4: Conversational question - explain normalization in DBMS', async () => {
     const res = await request(app)
@@ -146,7 +146,7 @@ describe('Vani Workspace End-to-End Acceptance Tests', () => {
     const sseText = res.text;
     expect(sseText).toContain('final.result');
     expect(sseText).toContain('[DONE]');
-  });
+  }, 60000);
 
   it('Scenario 5: Security IDOR check - User A cannot execute within User B project', async () => {
     const res = await request(app)

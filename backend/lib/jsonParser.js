@@ -114,8 +114,7 @@ export function sanitizeControlCharsInStrings(str) {
  */
 export function attemptCloseTruncatedJson(str) {
   if (typeof str !== 'string') return '';
-  let openBraces = 0;
-  let openBrackets = 0;
+  const stack = [];
   let inString = false;
   let isEscaped = false;
 
@@ -127,23 +126,21 @@ export function attemptCloseTruncatedJson(str) {
       else if (char === '"') inString = false;
     } else {
       if (char === '"') inString = true;
-      else if (char === '{') openBraces++;
-      else if (char === '}') openBraces = Math.max(0, openBraces - 1);
-      else if (char === '[') openBrackets++;
-      else if (char === ']') openBrackets = Math.max(0, openBrackets - 1);
+      else if (char === '{') stack.push('}');
+      else if (char === '[') stack.push(']');
+      else if (char === '}') {
+        if (stack.length > 0 && stack[stack.length - 1] === '}') stack.pop();
+      } else if (char === ']') {
+        if (stack.length > 0 && stack[stack.length - 1] === ']') stack.pop();
+      }
     }
   }
 
   let closed = str.trim();
   if (inString) closed += '"';
   closed = closed.replace(/,\s*$/, '');
-  while (openBrackets > 0) {
-    closed += ']';
-    openBrackets--;
-  }
-  while (openBraces > 0) {
-    closed += '}';
-    openBraces--;
+  while (stack.length > 0) {
+    closed += stack.pop();
   }
   return closed;
 }

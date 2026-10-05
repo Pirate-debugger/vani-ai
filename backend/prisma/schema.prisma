@@ -23,6 +23,7 @@ model User {
   apiKeys      ApiKey[]
   projects     Project[]
   customAgents CustomAgent[]
+  agentRuns    AgentRun[]
 }
 
 model ChatSession {
@@ -83,6 +84,8 @@ model Project {
   documents   Document[]
   sessions    ChatSession[]
   tasks       Task[]
+  agentRuns   AgentRun[]
+  memories    ProjectMemory[]
 }
 
 model Document {
@@ -146,4 +149,70 @@ model CustomAgent {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
+
+model AgentRun {
+  id             String          @id @default(cuid())
+  userId         String?
+  user           User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId      String?
+  project        Project?        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requestId      String?         @unique
+  agentId        String
+  mode           String          @default("auto")
+  status         String          @default("queued") // queued, running, paused, waiting_for_approval, completed, failed, cancelled
+  prompt         String
+  provider       String?
+  model          String?
+  result         String?         // Stored as JSON string
+  error          String?
+  cost           Float?
+  tokens         Int?
+  startedAt      DateTime        @default(now())
+  completedAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  steps          AgentStep[]
+  toolExecutions ToolExecution[]
+}
+
+model AgentStep {
+  id          String    @id @default(cuid())
+  runId       String
+  run         AgentRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  step        String
+  title       String
+  detail      String?
+  status      String    @default("running") // running, completed, failed, skipped
+  provider    String?
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+}
+
+model ToolExecution {
+  id          String    @id @default(cuid())
+  runId       String
+  run         AgentRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  tool        String
+  input       String?   // JSON string
+  output      String?   // JSON string
+  status      String    @default("running") // running, completed, failed
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+}
+
+model ProjectMemory {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type        String   // 'decision' | 'open_question' | 'knowledge' | 'source'
+  title       String
+  content     String
+  category    String?
+  confidence  String?
+  sourceUrl   String?
+  status      String?  // 'open' | 'resolved' for questions; 'active' | 'superseded' for decisions
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 

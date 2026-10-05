@@ -70,6 +70,9 @@ export const verifyDocumentOwnership = async (documentId, userId) => {
       project: true,
       versions: {
         orderBy: { createdAt: 'desc' }
+      },
+      tasks: {
+        orderBy: { createdAt: 'asc' }
       }
     }
   });

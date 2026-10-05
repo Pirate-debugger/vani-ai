@@ -2,8 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
-const MAX_RECORDING_MS = 5000; // Hard safety limit: max 5 seconds
-const SILENCE_TIMEOUT_MS = 1400; // ~1.4s silence triggers auto-stop
+const MAX_RECORDING_MS = 30000; // Configurable safety limit: 30 seconds for long input
+const SILENCE_TIMEOUT_MS = 1600; // ~1.6s silence triggers auto-stop
 const SPEECH_THRESHOLD = 15; // Audio energy threshold for VAD
 
 export const useVoiceRecorder = (languageCode = 'hi-IN') => {
@@ -252,11 +252,11 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
       hasSpokenRef.current = false;
 
       maxTimerRef.current = setTimeout(() => {
-        console.log('[Voice Engine] 5-second hard limit reached. Auto-stopping.');
-        stopRecording('max_duration_5s');
+        console.log('[Voice Engine] Maximum recording safety limit reached. Auto-stopping.');
+        stopRecording('max_duration_limit');
       }, MAX_RECORDING_MS);
 
-      // Rule 16 & 19: VAD silence detection (~1.4s of silence after speech)
+      // Rule 59 & 60: VAD silence detection and instantaneous barge-in interruption
       const dataArray = new Uint8Array(ana.frequencyBinCount);
       vadIntervalRef.current = setInterval(() => {
         if (!ana) return;
@@ -267,13 +267,18 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
 
         if (avg > SPEECH_THRESHOLD) {
           hasSpokenRef.current = true;
+          // Barge-in: immediately cut off any active TTS playback when user begins speaking
+          if (currentAudioRef.current || window.speechSynthesis?.speaking) {
+            console.log('[Voice Engine] Barge-in speech detected! Stopping playback.');
+            cancelSpeech();
+          }
           if (silenceTimerRef.current) {
             clearTimeout(silenceTimerRef.current);
             silenceTimerRef.current = null;
           }
         } else if (hasSpokenRef.current && !silenceTimerRef.current) {
           silenceTimerRef.current = setTimeout(() => {
-            console.log('[Voice Engine] Silence detected (~1.4s). Auto-stopping recording.');
+            console.log('[Voice Engine] Silence detected (~1.6s). Auto-stopping recording.');
             stopRecording('silence_detected');
           }, SILENCE_TIMEOUT_MS);
         }

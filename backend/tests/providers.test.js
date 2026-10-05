@@ -28,28 +28,24 @@ describe('Centralized AI Provider Layer', () => {
       expect(SUPPORTED_LANGUAGES).toContain('bn-IN');
     });
 
-    it('transcribeAudio returns simulated transcript when key is absent', async () => {
-      const res = await sarvamProvider.transcribeAudio(Buffer.from('fake-audio'), { languageCode: 'hi-IN' });
-      expect(res.transcript).toBeDefined();
-      expect(res.simulated).toBe(true);
+    it('transcribeAudio rejects with error when key is absent', async () => {
+      await expect(sarvamProvider.transcribeAudio(Buffer.from('fake-audio'), { apiKey: '' }))
+        .rejects.toThrow('Sarvam API key is not configured');
     });
 
-    it('synthesizeSpeech returns audio base64 when key is absent', async () => {
-      const res = await sarvamProvider.synthesizeSpeech('BRD ban gaya hai', { targetLanguage: 'hi-IN' });
-      expect(res.audioBase64).toBeDefined();
-      expect(res.simulated).toBe(true);
+    it('synthesizeSpeech rejects with error when key is absent', async () => {
+      await expect(sarvamProvider.synthesizeSpeech('BRD ban gaya hai', { apiKey: '' }))
+        .rejects.toThrow('Sarvam API key is not configured');
     });
 
-    it('translateText returns simulated translation when key is absent', async () => {
-      const res = await sarvamProvider.translateText('Hello', { sourceLanguage: 'en-IN', targetLanguage: 'hi-IN' });
-      expect(res.translatedText).toBe('Hello');
-      expect(res.simulated).toBe(true);
+    it('translateText rejects with error when key is absent', async () => {
+      await expect(sarvamProvider.translateText('Hello', { apiKey: '' }))
+        .rejects.toThrow('Sarvam API key is not configured');
     });
 
-    it('chatCompletion operates in fallback mode without crashing', async () => {
-      const res = await sarvamProvider.chatCompletion([{ role: 'user', content: 'Namaste' }]);
-      expect(res.text).toBeDefined();
-      expect(res.provider).toBe('sarvam');
+    it('chatCompletion rejects with error when key is absent', async () => {
+      await expect(sarvamProvider.chatCompletion([{ role: 'user', content: 'Namaste' }], { apiKey: '' }))
+        .rejects.toThrow('Sarvam API key is not configured');
     });
   });
 
@@ -61,13 +57,9 @@ describe('Centralized AI Provider Layer', () => {
       expect(OPENAI_MODELS.CODE).toBeDefined();
     });
 
-    it('generates simulated structured output when key is absent', async () => {
-      const res = await openaiProvider.generateStructured('Create BRD for PG finder');
-      expect(res.text).toBeDefined();
-      expect(res.provider).toBe('openai');
-      const parsed = JSON.parse(res.text);
-      expect(parsed.title).toBeDefined();
-      expect(parsed.content).toBeDefined();
+    it('generateStructured rejects with error when key is absent', async () => {
+      await expect(openaiProvider.generateStructured('Create BRD for PG finder', { apiKey: '' }))
+        .rejects.toThrow('OpenAI API is not configured');
     });
   });
 
@@ -77,12 +69,13 @@ describe('Centralized AI Provider Layer', () => {
       expect(GEMINI_MODELS.DOCUMENT).toBeDefined();
     });
 
-    it('generates simulated structured output when key is absent', async () => {
-      const res = await geminiProvider.generateStructured('Create BRD for student startup');
-      expect(res.text).toBeDefined();
-      expect(res.provider).toBe('gemini');
-      const parsed = JSON.parse(res.text);
-      expect(parsed.title).toBeDefined();
+    it('throws error when key is absent and handles demo mode explicitly', async () => {
+      await expect(geminiProvider.generateStructured('Create BRD for student startup', { apiKey: '' }))
+        .rejects.toThrow('Gemini API is not configured');
+
+      const demoRes = await geminiProvider.generateStructured('Create BRD for student startup', { apiKey: '', demo: true });
+      expect(demoRes.text).toBeDefined();
+      expect(demoRes.simulated).toBe(true);
     });
   });
 
@@ -96,7 +89,7 @@ describe('Centralized AI Provider Layer', () => {
     });
 
     it('researchWeb returns clean fallback structure when offline', async () => {
-      const res = await tinyfishProvider.researchWeb('PG accommodations in Bangalore');
+      const res = await tinyfishProvider.researchWeb('PG accommodations in Bangalore', { apiKey: '' });
       expect(res.query).toBe('PG accommodations in Bangalore');
       expect(res.researchUsed).toBe(false);
       expect(Array.isArray(res.sources)).toBe(true);
@@ -134,7 +127,8 @@ describe('Centralized AI Provider Layer', () => {
     it('executeReasoning routes to preferred provider and produces structured response', async () => {
       const res = await providerRouter.executeReasoning('Generate summary', {
         structured: true,
-        preferredProvider: 'gemini'
+        preferredProvider: 'gemini',
+        demo: true
       });
       expect(res.text).toBeDefined();
       expect(res.provider).toBeDefined();

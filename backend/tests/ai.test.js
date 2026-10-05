@@ -36,20 +36,23 @@ describe('AI Routes', () => {
       expect(res.body.error).toMatch(/too long/i);
     });
 
-    it('simulator mode: pg keyword -> returns PG content in correct language', async () => {
+    it('unconfigured provider -> truthful 503 PROVIDER_NOT_CONFIGURED (Rule 9)', async () => {
       const res = await request(app).post('/api/ai/chat').send({
         messages: [{ role: 'user', content: 'where can i find a pg?' }],
         language_code: 'hi-IN'
       });
-      expect(res.status).toBe(200);
-      expect(res.body.response).toBeDefined();
+      expect(res.status).toBe(503);
+      expect(res.body.error).toMatch(/No AI provider/i);
     });
 
-    it('simulator mode: नौकरी keyword -> returns Hindi jobs content', async () => {
+    it('explicit demo mode: returns demo content when enabled', async () => {
+      process.env.VANI_DEMO_MODE = 'true';
       const res = await request(app).post('/api/ai/chat').send({
-        messages: [{ role: 'user', content: 'मुझे नौकरी चाहिए' }],
-        language_code: 'hi-IN'
+        messages: [{ role: 'user', content: 'where can i find a pg?' }],
+        language_code: 'hi-IN',
+        demo: true
       });
+      delete process.env.VANI_DEMO_MODE;
       expect(res.status).toBe(200);
       expect(res.body.response).toBeDefined();
     });

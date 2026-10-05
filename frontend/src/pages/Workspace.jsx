@@ -394,6 +394,7 @@ export default function Workspace({
       let accumulatedText = '';
       let currentExecution = null;
       let finalResultPayload = null;
+      let streamExecutionError = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -484,7 +485,13 @@ export default function Workspace({
             } else if (event.type === 'final.result') {
               finalResultPayload = event.result;
             } else if (event.type === 'error') {
-              throw new Error(event.error || 'Execution encountered an error');
+              streamExecutionError = event.error || event.message || 'Execution encountered an error';
+              if (currentExecution) {
+                currentExecution.status = 'failed';
+                currentExecution.error = streamExecutionError;
+                setActiveExecution({ ...currentExecution });
+              }
+              break;
             }
           } catch (jsonErr) {
             console.warn('[SSE Parse Warn]:', jsonErr.message);
@@ -495,6 +502,15 @@ export default function Workspace({
       // Finalize assistant message
       setMessages(prev => prev.map(m => {
         if (m.id === assistantMsgId) {
+          if (streamExecutionError) {
+            return {
+              ...m,
+              content: `⚠️ ${streamExecutionError}`,
+              isError: true,
+              agentExecution: currentExecution ? { ...currentExecution, status: 'failed', error: streamExecutionError } : null,
+              isStreaming: false
+            };
+          }
           const finalContent = accumulatedText || finalResultPayload?.response || finalResultPayload?.text || 'Generated result ready.';
           return {
             ...m,
@@ -511,7 +527,7 @@ export default function Workspace({
 
       // Auto-speak response via Sarvam TTS if configured
       const speechText = finalResultPayload?.response || accumulatedText;
-      if (autoSpeak && speechText) {
+      if (autoSpeak && speechText && !streamExecutionError) {
         speakWithTTS(speechText, currentLang, voiceSpeed);
       }
 
@@ -585,22 +601,6 @@ export default function Workspace({
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#07050F] text-[#F8F7FF] overflow-hidden relative font-sans">
-      
-      {/* ── Global Command Palette Modal (Section 19 & 20) ────────────────── */}
-      <CommandPalette
-        isOpen={commandPaletteOpen}
-        onClose={() => setCommandPaletteOpen(false)}
-        onNewChat={() => { setMessages([]); setActiveDocument(null); setViewMode('chat'); }}
-        onNewProject={() => setShowNewProjectModal(true)}
-        onSelectProject={handleSelectProject}
-        onOpenDocument={(docId) => loadDocument(docId)}
-        onSwitchMode={(mode) => setSelectedAgent(mode)}
-        onToggleVoice={() => {
-          if (isRecording) stopRecording();
-          else startRecording();
-        }}
-        onOpenSettings={() => window.location.href = '/settings'}
-      />
 
       {/* ── Top Context Bar (Section 24) ──────────────────────────────────── */}
       <header className="px-4 py-2.5 border-b border-white/10 bg-[#0B0914]/80 backdrop-blur-md flex items-center justify-between z-20 shrink-0 gap-3">
@@ -1125,6 +1125,7 @@ export default function Workspace({
           }`}>
             <DocumentViewer
               document={activeDocument}
+              projectTasks={activeDocument.tasks || []}
               onAskVani={handleAskVaniFromArtifact}
               onFollowUpAction={handleFollowUpAction}
               onConvertToPrd={() => submitStreamMessage(`Convert "${activeDocument.title}" into a complete Product Requirements Document (PRD).`)}

@@ -152,7 +152,7 @@ export const callGeminiLLM = async (messages, prompt, langCode, personality, pro
 
   // Model fallback list with modern active models
   const configuredModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
-  const models = Array.from(new Set([configuredModel, 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest']));
+  const models = Array.from(new Set([configuredModel, 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.8-flash']));
   let lastErr = null;
 
   for (const modelName of models) {
@@ -257,12 +257,12 @@ export const getAIResponse = async ({
       }
     }
   } else {
-    // Standard chat flow: Sarvam -> OpenAI -> Gemini
-    if (!rawResponse && sarvamKey) {
+    // Standard chat flow: Gemini / OpenAI / Sarvam
+    if (!rawResponse && geminiKey) {
       try {
-        rawResponse = await callSarvamLLM(messages, userPrompt, langCode, character, profileContext, sarvamKey, options);
+        rawResponse = await callGeminiLLM(messages, userPrompt, langCode, character, profileContext, geminiKey, options);
       } catch (err) {
-        console.warn('Sarvam LLM failed, checking other keys...', err.message);
+        console.warn('Gemini LLM failed, checking other keys...', err.message);
       }
     }
     if (!rawResponse && openaiKey) {
@@ -272,57 +272,26 @@ export const getAIResponse = async ({
         console.warn('OpenAI API failed, checking other keys...', err.message);
       }
     }
-    if (!rawResponse && geminiKey) {
+    if (!rawResponse && sarvamKey) {
       try {
-        rawResponse = await callGeminiLLM(messages, userPrompt, langCode, character, profileContext, geminiKey, options);
+        rawResponse = await callSarvamLLM(messages, userPrompt, langCode, character, profileContext, sarvamKey, options);
       } catch (err) {
-        console.warn('Gemini API failed, falling back to simulator...', err.message);
+        console.warn('Sarvam LLM failed...', err.message);
       }
     }
   }
 
-  // 4. Simulator Fallback
+  // 4. Honest error handling - NO SILENT SIMULATORS IN PRODUCTION
   if (!rawResponse) {
-    console.log(`[LLM Simulator] Processing request in: ${langCode} (persona: ${character})`);
-    if (operationType === 'TASK_EXTRACTION') {
-      rawResponse = {
-        response: JSON.stringify([
-          {
-            title: "Setup User Authentication & Verification",
-            description: "Implement student profile and verification workflows.",
-            priority: "high"
-          },
-          {
-            title: "Develop PG Listing & Search Filters",
-            description: "Build location, pricing, and amenity filters for PG discovery.",
-            priority: "high"
-          },
-          {
-            title: "Integrate Booking & Payment Gateway",
-            description: "Enable token advance payments with escrow security.",
-            priority: "medium"
-          }
-        ]),
-        model: 'gemini-simulator',
-        simulated: true
-      };
-    } else if (isDocumentGeneration) {
-      rawResponse = {
-        response: JSON.stringify({
-          title: 'Student PG Finder Startup Enterprise BRD',
-          summary: 'A curated discovery and booking platform for student housing across Tier 1 and Tier 2 cities in India.',
-          content: '## 1. Executive Summary\nStudent PG Finder addresses affordable student housing.\n\n## 4. Business Objectives\n- Reduce vacancy rates by 30%.\n\n## 12. Functional Requirements\n- **FR-001**: User Signup & Verification\n  - Actor: Student\n  - Priority: High\n  - Expected Outcome: Verified student profile created\n\n## 13. Non-Functional Requirements\n- **NFR-001**: [Latency < 200ms]\n\n## 21. Risks & Mitigation\n- Fake listings: Physical audits\n\n## 22. KPIs\n- 50,000 MAU in Q1\n\n## 23. Competitor Analysis\n- ZoloStays, Stanza Living',
-          metadata: {
-            researchUsed: true,
-            confidence: 'high',
-            sources: []
-          }
-        }),
-        model: 'gemini-simulator',
-        simulated: true
-      };
-    } else {
+    if (process.env.VANI_DEMO_MODE === 'true') {
+      console.log(`[LLM Demo Mode] Processing request in: ${langCode} (persona: ${character})`);
       rawResponse = await getSimulatorResponse(userPrompt, langCode, character);
+    } else {
+      const err = new Error('No AI provider available or all configured providers failed.');
+      err.code = 'PROVIDER_UNAVAILABLE';
+      err.status = 503;
+      err.retryable = true;
+      throw err;
     }
   }
 

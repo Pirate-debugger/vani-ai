@@ -141,8 +141,18 @@ router.post('/orchestrate-stream', async (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders?.();
 
+  const abortController = new AbortController();
+  res.on('close', () => {
+    if (!res.writableEnded && !res.writableFinished) {
+      console.log(`[SSE] Client connection closed prematurely for request: ${req.body?.requestId || 'anonymous'}`);
+      abortController.abort();
+    }
+  });
+
   const onEvent = (event) => {
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    }
   };
 
   try {
@@ -186,10 +196,12 @@ router.post('/orchestrate-stream', async (req, res) => {
       agentType,
       projectId,
       userId: authUser?.id || null,
+      requestId,
       languageCode: language_code || 'hi-IN',
       personality,
       profile,
       apiKeys,
+      signal: abortController.signal,
       onEvent
     });
 
@@ -197,20 +209,24 @@ router.post('/orchestrate-stream', async (req, res) => {
       idempotencyCache.set(requestId, { inProgress: false, result: finalResult, timestamp: Date.now() });
     }
 
-    res.write(`data: ${JSON.stringify({ type: 'final.result', result: finalResult })}\n\n`);
-    res.write('data: [DONE]\n\n');
-    res.end();
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ type: 'final.result', result: finalResult })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    }
   } catch (error) {
     console.error('[Orchestrate Stream Error]:', error.message);
     if (req.body?.requestId) {
       idempotencyCache.delete(req.body.requestId);
     }
-    res.write(`data: ${JSON.stringify({ 
-      type: 'error', 
-      error: error.message || 'Stream processing failed', 
-      code: error.code || 'STREAM_FAILED' 
-    })}\n\n`);
-    res.end();
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ 
+        type: 'error', 
+        error: error.message || 'Stream processing failed', 
+        code: error.code || 'STREAM_FAILED' 
+      })}\n\n`);
+      res.end();
+    }
   }
 });
 

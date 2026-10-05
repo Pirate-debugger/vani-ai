@@ -244,11 +244,41 @@ ${documentContent.substring(0, 12000)}`;
     });
 
     const parsed = parseStructuredJSON(response.response);
-    return validateAndNormalizeTasks(parsed);
+    const normalized = validateAndNormalizeTasks(parsed);
+    if (normalized.length > 0) return normalized;
   } catch (error) {
-    console.error('Error extracting tasks from document:', error.message);
-    return [];
+    console.error('Error extracting tasks from document via AI:', error.message);
   }
+
+  // Fallback: parse actionable items from Functional Requirements / Workflows in markdown
+  const fallbackTasks = [];
+  const lines = documentContent.split('\n');
+  let inActionableSection = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/(requirements|implementation|tasks|action|scope|features|milestones|workflows)/i.test(trimmed) && trimmed.startsWith('#')) {
+      inActionableSection = true;
+      continue;
+    }
+    if (trimmed.startsWith('#') && inActionableSection) {
+      inActionableSection = false;
+    }
+    if ((inActionableSection || trimmed.startsWith('- [ ]') || /^\d+\.\s+/.test(trimmed)) && trimmed.length > 10) {
+      const cleanTitle = trimmed.replace(/^[-*•\d.]+\s*(\[[ xX]\]\s*)?/, '').trim();
+      if (cleanTitle && cleanTitle.length > 5 && !cleanTitle.startsWith('#')) {
+        fallbackTasks.push({
+          title: cleanTitle.substring(0, 120),
+          description: `Extracted from requirements: ${cleanTitle}`,
+          suggestedAssignee: null,
+          priority: 'medium'
+        });
+      }
+    }
+    if (fallbackTasks.length >= 8) break;
+  }
+
+  return validateAndNormalizeTasks(fallbackTasks);
 };
 
 /**
@@ -327,12 +357,14 @@ export const identifyAgentIntent = async (userPrompt, apiKeys) => {
     return 'research';
   }
 
-  // Fast bypass for standard conversational and explanation queries
-  const simpleChatPatterns = [
-    'hello', 'hi', 'hey', 'namaste', 'kaise ho', 'who are you', 'what is',
-    'explain recursion', 'explain normalization', 'how do i', 'what does', 'tell me a joke'
+  // Fast bypass for standard conversational and explanation queries (Rule 8)
+  const simpleChatPrefixes = [
+    'hello', 'hi', 'hey', 'namaste', 'kaise ho', 'who are you', 'what is', 'what are',
+    'explain ', 'how do i', 'how to ', 'how does ', 'difference between', 'tell me about',
+    'tell me a joke', 'can you explain'
   ];
-  if (simpleChatPatterns.some(pattern => p.startsWith(pattern) || p === pattern) && !p.includes('competitor') && !p.includes('brd') && !p.includes('build')) {
+  if (simpleChatPrefixes.some(prefix => p.startsWith(prefix) || p === prefix) && 
+      !p.includes('competitor') && !p.includes('market research') && !p.includes('brd') && !p.includes('prd') && !p.includes('build an mvp')) {
     return 'general';
   }
 

@@ -21,8 +21,8 @@ export const SUPPORTED_LANGUAGES = [
  * Check if Sarvam API is configured
  */
 export function isSarvamConfigured(overrideKey) {
-  const key = overrideKey || process.env.SARVAM_API_KEY;
-  return Boolean(key && key.trim() !== '');
+  const key = overrideKey !== undefined ? overrideKey : process.env.SARVAM_API_KEY;
+  return Boolean(key && String(key).trim() !== '');
 }
 
 /**
@@ -31,15 +31,14 @@ export function isSarvamConfigured(overrideKey) {
 export async function transcribeAudio(audioBuffer, options = {}) {
   const languageCode = options.languageCode || 'hi-IN';
   const model = options.model || SARVAM_MODELS.STT;
-  const apiKey = options.apiKey || options.sarvamKey || process.env.SARVAM_API_KEY;
+  const apiKey = options.apiKey !== undefined ? options.apiKey : (options.sarvamKey || process.env.SARVAM_API_KEY);
 
   if (!isSarvamConfigured(apiKey)) {
-    console.log(`[Sarvam STT Simulator] Transcribing buffer (${audioBuffer ? audioBuffer.length : 0} bytes) in ${languageCode}`);
-    return {
-      transcript: 'Vani, student PG finder startup ke liye detailed BRD banao aur current competitors research karo.',
-      language_code: languageCode,
-      simulated: true
-    };
+    const err = new Error('Sarvam API key is not configured for Speech-to-Text.');
+    err.code = 'PROVIDER_NOT_CONFIGURED';
+    err.provider = 'sarvam';
+    err.status = 503;
+    throw err;
   }
 
   try {
@@ -68,7 +67,10 @@ export async function transcribeAudio(audioBuffer, options = {}) {
     };
   } catch (error) {
     console.error('[Sarvam STT Error]', error?.response?.data || error.message);
-    throw new Error(error?.response?.data?.message || 'Sarvam Speech-to-Text transcription failed');
+    const err = new Error(error?.response?.data?.message || 'Sarvam Speech-to-Text transcription failed');
+    err.provider = 'sarvam';
+    err.details = error?.response?.data || error.message;
+    throw err;
   }
 }
 
@@ -89,14 +91,14 @@ export async function synthesizeSpeech(text, options = {}) {
   const speaker = (requestedSpeaker && VALID_BULBUL_SPEAKERS.has(requestedSpeaker)) ? requestedSpeaker : defaultSpeaker;
   const speechSampleRate = options.speechSampleRate || 22050;
   const model = options.model || SARVAM_MODELS.TTS;
-  const apiKey = options.apiKey || options.sarvamKey || process.env.SARVAM_API_KEY;
+  const apiKey = options.apiKey !== undefined ? options.apiKey : (options.sarvamKey || process.env.SARVAM_API_KEY);
 
   if (!isSarvamConfigured(apiKey)) {
-    console.log(`[Sarvam TTS Simulator] Synthesizing speech for "${text.slice(0, 40)}..." in ${targetLanguage}`);
-    return {
-      audioBase64: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=',
-      simulated: true
-    };
+    const err = new Error('Sarvam API key is not configured for Text-to-Speech synthesis.');
+    err.code = 'PROVIDER_NOT_CONFIGURED';
+    err.provider = 'sarvam';
+    err.status = 503;
+    throw err;
   }
 
   try {
@@ -122,7 +124,10 @@ export async function synthesizeSpeech(text, options = {}) {
     };
   } catch (error) {
     console.error('[Sarvam TTS Error]', error?.response?.data || error.message);
-    throw new Error(error?.response?.data?.message || 'Sarvam Text-to-Speech synthesis failed');
+    const err = new Error(error?.response?.data?.message || 'Sarvam Text-to-Speech synthesis failed');
+    err.provider = 'sarvam';
+    err.details = error?.response?.data || error.message;
+    throw err;
   }
 }
 
@@ -133,16 +138,14 @@ export async function translateText(text, options = {}) {
   const sourceLang = options.sourceLanguage || options.source_language_code || 'auto';
   const targetLang = options.targetLanguage || options.target_language_code || 'hi-IN';
   const model = options.model || SARVAM_MODELS.TRANSLATION;
-  const apiKey = options.apiKey || options.sarvamKey || process.env.SARVAM_API_KEY;
+  const apiKey = options.apiKey !== undefined ? options.apiKey : (options.sarvamKey || process.env.SARVAM_API_KEY);
 
   if (!isSarvamConfigured(apiKey)) {
-    console.log(`[Sarvam Translation Simulator] Translating from ${sourceLang} to ${targetLang}`);
-    return {
-      translatedText: text,
-      sourceLanguage: sourceLang,
-      targetLanguage: targetLang,
-      simulated: true
-    };
+    const err = new Error('Sarvam API key is not configured for translation.');
+    err.code = 'PROVIDER_NOT_CONFIGURED';
+    err.provider = 'sarvam';
+    err.status = 503;
+    throw err;
   }
 
   try {
@@ -168,7 +171,9 @@ export async function translateText(text, options = {}) {
     };
   } catch (error) {
     console.error('[Sarvam Translate Error]', error?.response?.data || error.message);
-    throw new Error(error?.response?.data?.message || 'Sarvam Translation failed');
+    const err = new Error(error?.response?.data?.message || 'Sarvam Translation failed');
+    err.provider = 'sarvam';
+    throw err;
   }
 }
 
@@ -177,20 +182,24 @@ export async function translateText(text, options = {}) {
  */
 export async function chatCompletion(messages, options = {}) {
   const model = options.model || (options.isReasoning ? SARVAM_MODELS.LLM : SARVAM_MODELS.CONVERSATIONS);
-  const apiKey = options.apiKey || options.sarvamKey || process.env.SARVAM_API_KEY;
+  const apiKey = options.apiKey !== undefined ? options.apiKey : (options.sarvamKey || process.env.SARVAM_API_KEY);
 
   if (!isSarvamConfigured(apiKey)) {
-    return {
-      text: 'Namaste! Main Vani AI hoon. Aapki startup aur business requirements mein kaise madad kar sakti hoon?',
-      simulated: true,
-      provider: 'sarvam'
-    };
+    const err = new Error('Sarvam API key is not configured for Chat Completion.');
+    err.code = 'PROVIDER_NOT_CONFIGURED';
+    err.provider = 'sarvam';
+    err.status = 503;
+    throw err;
   }
+
+  const formattedMessages = Array.isArray(messages) 
+    ? messages.map(m => typeof m === 'string' ? { role: 'user', content: m } : m)
+    : [{ role: 'user', content: String(messages) }];
 
   try {
     const response = await axios.post(`${SARVAM_BASE_URL}/v1/chat/completions`, {
       model: model,
-      messages: messages,
+      messages: formattedMessages,
       temperature: options.temperature || 0.3,
       max_tokens: options.max_tokens || options.maxTokens || 800
     }, {
@@ -207,11 +216,14 @@ export async function chatCompletion(messages, options = {}) {
     return {
       text: content,
       simulated: false,
-      provider: 'sarvam'
+      provider: 'sarvam',
+      model
     };
   } catch (error) {
     console.error('[Sarvam Chat Error]', error?.response?.data || error.message);
-    throw new Error(error?.response?.data?.message || 'Sarvam chat completion failed');
+    const err = new Error(error?.response?.data?.message || 'Sarvam chat completion failed');
+    err.provider = 'sarvam';
+    throw err;
   }
 }
 

@@ -15,18 +15,11 @@ export function isTinyFishConfigured(overrideKey) {
  */
 export async function searchWeb(query, options = {}) {
   const limit = options.limit || 5;
-  const apiKey = options.apiKey || options.tinyfishKey;
+  const apiKey = options.apiKey !== undefined ? options.apiKey : (options.tinyfishKey !== undefined ? options.tinyfishKey : process.env.TINYFISH_API_KEY);
 
   if (!isTinyFishConfigured(apiKey)) {
-    console.log(`[TinyFish Search Simulator] Querying: "${query}" (limit: ${limit})`);
-    return [
-      {
-        title: 'Top Student PGs in India - Housing & Stanza Living Review',
-        url: 'https://example.com/pg-market-analysis',
-        snippet: 'Average student PG rent in Pune & Bengaluru ranges from 6,000 to 14,000 INR/month including food and WiFi.',
-        domain: 'example.com'
-      }
-    ];
+    console.log(`[TinyFish Search] TinyFish not configured. Returning empty search results.`);
+    return [];
   }
 
   const res = await coreSearchWeb(query, { ...options, limit, apiKey });
@@ -37,37 +30,29 @@ export async function searchWeb(query, options = {}) {
  * TinyFish Fetch: retrieve clean rendered markdown / text
  */
 export async function fetchWeb(url, options = {}) {
-  const apiKey = options.apiKey || options.tinyfishKey;
+  const apiKey = options.apiKey !== undefined ? options.apiKey : (options.tinyfishKey !== undefined ? options.tinyfishKey : process.env.TINYFISH_API_KEY);
 
   if (!isTinyFishConfigured(apiKey)) {
-    console.log(`[TinyFish Fetch Simulator] Fetching URL: ${url}`);
-    return {
-      url,
-      title: 'Market Overview: Student Accommodations',
-      content: 'Market data indicates 35% growth in managed student co-living spaces with security deposits being a major pain point.',
-      domain: 'example.com'
-    };
+    console.log(`[TinyFish Fetch] TinyFish not configured. Returning null content.`);
+    return null;
   }
 
   const res = await coreFetchWeb(url, { ...options, apiKey });
-  return res.content ? { url, content: res.content, title: 'Web Content', domain: res.domain } : null;
+  return res.content ? { url, content: res.content, title: res.title || 'Web Content', domain: res.domain } : null;
 }
 
 /**
  * TinyFish Web Agent: navigate or interact with web goal
  */
 export async function runWebAgent(url, goal, options = {}) {
-  const apiKey = options.apiKey || options.tinyfishKey;
+  const apiKey = options.apiKey !== undefined ? options.apiKey : (options.tinyfishKey !== undefined ? options.tinyfishKey : process.env.TINYFISH_API_KEY);
 
   if (!isTinyFishConfigured(apiKey)) {
-    console.log(`[TinyFish WebAgent Simulator] Running goal on ${url}: "${goal}"`);
-    return {
-      url,
-      goal,
-      success: true,
-      summary: `Simulated browser agent completed task: ${goal}`,
-      findings: ['Found student PG listing starting at 7,500/month', 'Verified amenities included']
-    };
+    const err = new Error('TinyFish API is not configured for browser automation.');
+    err.code = 'PROVIDER_NOT_CONFIGURED';
+    err.provider = 'tinyfish';
+    err.status = 503;
+    throw err;
   }
 
   const res = await coreRunWebAgent(url, goal, { ...options, apiKey });
@@ -84,13 +69,14 @@ export async function runWebAgent(url, goal, options = {}) {
  * Comprehensive Web Research (Search -> Select -> Fetch -> Normalize -> Evidence)
  */
 export async function researchWeb(query, options = {}) {
-  const apiKey = options.apiKey || options.tinyfishKey;
+  const apiKey = options.apiKey !== undefined ? options.apiKey : (options.tinyfishKey !== undefined ? options.tinyfishKey : process.env.TINYFISH_API_KEY);
 
   if (!isTinyFishConfigured(apiKey)) {
     console.log(`[TinyFish Pipeline] TinyFish not configured. Proceeding without live research.`);
     return {
       query,
       researchUsed: false,
+      available: false,
       sources: [],
       evidence: [],
       competitors: [],
@@ -104,6 +90,7 @@ export async function researchWeb(query, options = {}) {
   return {
     query,
     researchUsed: Boolean(result.available && result.sources?.length > 0),
+    available: Boolean(result.available && result.sources?.length > 0),
     sources: result.sources || [],
     evidence: result.evidence || [],
     competitors: result.competitors || [],

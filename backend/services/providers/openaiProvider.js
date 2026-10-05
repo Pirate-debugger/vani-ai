@@ -8,13 +8,13 @@ export const OPENAI_MODELS = {
 };
 
 function getClient(overrideKey) {
-  const apiKey = overrideKey || process.env.OPENAI_API_KEY;
+  const apiKey = overrideKey !== undefined ? overrideKey : process.env.OPENAI_API_KEY;
   if (!apiKey || !apiKey.trim()) return null;
   return new OpenAI({ apiKey: apiKey.trim() });
 }
 
 export function isOpenAIConfigured(overrideKey) {
-  const key = overrideKey || process.env.OPENAI_API_KEY;
+  const key = overrideKey !== undefined ? overrideKey : process.env.OPENAI_API_KEY;
   return Boolean(key && key.trim() !== '');
 }
 
@@ -22,17 +22,16 @@ export function isOpenAIConfigured(overrideKey) {
  * Standard Chat Completion
  */
 export async function chat(messages, options = {}) {
-  const apiKey = options.apiKey || options.openaiKey;
+  const apiKey = options.apiKey !== undefined ? options.apiKey : (options.openaiKey || process.env.OPENAI_API_KEY);
   const modelType = options.modelType || 'CHAT';
   const model = options.model || OPENAI_MODELS[modelType] || OPENAI_MODELS.CHAT;
 
   if (!isOpenAIConfigured(apiKey)) {
-    return {
-      text: 'Simulated OpenAI response: Vani AI is operating in development mode.',
-      simulated: true,
-      provider: 'openai',
-      model
-    };
+    const err = new Error('OpenAI API is not configured. Please provide an OPENAI_API_KEY.');
+    err.code = 'PROVIDER_NOT_CONFIGURED';
+    err.provider = 'openai';
+    err.status = 503;
+    throw err;
   }
 
   const client = getClient(apiKey);
@@ -57,26 +56,69 @@ export async function chat(messages, options = {}) {
 }
 
 /**
+ * Native OpenAI Token Streaming
+ */
+export async function streamChat(messages, options = {}, onChunk = () => {}) {
+  const apiKey = options.apiKey !== undefined ? options.apiKey : (options.openaiKey || process.env.OPENAI_API_KEY);
+  const modelType = options.modelType || 'CHAT';
+  const model = options.model || OPENAI_MODELS[modelType] || OPENAI_MODELS.CHAT;
+
+  if (!isOpenAIConfigured(apiKey)) {
+    const err = new Error('OpenAI API is not configured for streaming.');
+    err.code = 'PROVIDER_NOT_CONFIGURED';
+    err.provider = 'openai';
+    err.status = 503;
+    throw err;
+  }
+
+  const client = getClient(apiKey);
+  const formattedMessages = Array.isArray(messages) 
+    ? messages.map(m => typeof m === 'string' ? { role: 'user', content: m } : m)
+    : [{ role: 'user', content: String(messages) }];
+
+  if (options.systemPrompt) {
+    formattedMessages.unshift({ role: 'system', content: options.systemPrompt });
+  }
+
+  const stream = await client.chat.completions.create({
+    model,
+    messages: formattedMessages,
+    temperature: options.temperature ?? 0.3,
+    max_tokens: options.max_tokens || options.maxTokens || 1000,
+    stream: true
+  });
+
+  let fullText = '';
+  for await (const chunk of stream) {
+    const token = chunk.choices[0]?.delta?.content || '';
+    if (token) {
+      fullText += token;
+      onChunk(token);
+    }
+  }
+
+  return {
+    text: fullText,
+    model,
+    provider: 'openai'
+  };
+}
+
+/**
  * Generate Structured Output with JSON Schema / Object format
  */
 export async function generateStructured(prompt, options = {}) {
-  const apiKey = options.apiKey || options.openaiKey;
+  const apiKey = options.apiKey !== undefined ? options.apiKey : (options.openaiKey || process.env.OPENAI_API_KEY);
   const systemPrompt = options.systemPrompt || 'You are an expert AI system architect. Output valid JSON adhering strictly to the requested schema.';
   const modelType = options.modelType || 'DOCUMENT';
   const model = options.model || OPENAI_MODELS[modelType] || OPENAI_MODELS.DOCUMENT;
 
   if (!isOpenAIConfigured(apiKey)) {
-    return {
-      text: JSON.stringify({
-        title: 'Student PG Finder Startup BRD',
-        summary: 'A marketplace for students to find verified PG accommodations in India.',
-        content: '# Business Requirements Document\n\n## 1. Executive Summary\nStudent PG Finder addresses affordable housing for students.',
-        metadata: { researchUsed: false, confidence: 'high' }
-      }),
-      simulated: true,
-      provider: 'openai',
-      model
-    };
+    const err = new Error('OpenAI API is not configured for structured document generation.');
+    err.code = 'PROVIDER_NOT_CONFIGURED';
+    err.provider = 'openai';
+    err.status = 503;
+    throw err;
   }
 
   const client = getClient(apiKey);
@@ -106,6 +148,7 @@ export async function generateStructured(prompt, options = {}) {
 export default {
   isConfigured: isOpenAIConfigured,
   chat,
+  streamChat,
   generateStructured,
   OPENAI_MODELS
 };

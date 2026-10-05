@@ -1,7 +1,7 @@
 import express from 'express';
 import prisma from '../lib/prisma.js';
 import { requireAuth, verifyDocumentOwnership } from '../middleware/auth.js';
-import { runAgentWorkflow } from '../services/agentService.js';
+import { orchestrate } from '../services/orchestrator.js';
 import { decryptKey } from '../lib/crypto.js';
 
 const router = express.Router();
@@ -96,7 +96,18 @@ router.post('/projects', requireAuth, async (req, res) => {
 router.get('/:id', requireAuth, async (req, res) => {
   try {
     const document = await verifyDocumentOwnership(req.params.id, req.authUser.id);
-    res.json(document);
+    let parsedMetadata = document.metadata;
+    if (typeof document.metadata === 'string') {
+      try {
+        parsedMetadata = JSON.parse(document.metadata);
+      } catch {
+        parsedMetadata = {};
+      }
+    }
+    res.json({
+      ...document,
+      metadata: parsedMetadata || {}
+    });
   } catch (error) {
     res.status(error.status || 500).json({
       error: error.message || 'Failed to fetch document',
@@ -106,7 +117,7 @@ router.get('/:id', requireAuth, async (req, res) => {
 });
 
 // POST /api/document/:id/convert
-// Convert document from BRD to PRD or other target type (ensures ownership)
+// Convert document from BRD to PRD or other target type using canonical orchestrator
 router.post('/:id/convert', requireAuth, async (req, res) => {
   try {
     const { targetType } = req.body;
@@ -115,7 +126,8 @@ router.post('/:id/convert', requireAuth, async (req, res) => {
     const apiKeys = {
       sarvamKey: await getSarvamKey(req),
       openaiKey: process.env.OPENAI_API_KEY,
-      geminiKey: await getGeminiKey(req)
+      geminiKey: await getGeminiKey(req),
+      tinyfishKey: process.env.TINYFISH_API_KEY
     };
 
     const contextMessages = [
@@ -124,13 +136,14 @@ router.post('/:id/convert', requireAuth, async (req, res) => {
 
     const conversionGoal = `Please convert the provided source ${document.type.toUpperCase()} into a comprehensive ${targetType || 'PRD'} for this project.`;
 
-    const response = await runAgentWorkflow(
-      document.projectId,
-      targetType || 'prd',
-      conversionGoal,
-      contextMessages,
+    const response = await orchestrate({
+      prompt: conversionGoal,
+      messages: contextMessages,
+      agentType: targetType || 'prd',
+      projectId: document.projectId,
+      userId: req.authUser.id,
       apiKeys
-    );
+    });
 
     res.json(response);
   } catch (error) {

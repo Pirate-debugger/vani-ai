@@ -1,6 +1,8 @@
 import axios from 'axios';
+import geminiProvider from './providers/geminiProvider.js';
+import openaiProvider from './providers/openaiProvider.js';
 
-export const streamAIResponse = async (messages, langCode, res, { sarvamKey, openaiKey }) => {
+export const streamAIResponse = async (messages, langCode, res, { sarvamKey, openaiKey, geminiKey }) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -20,30 +22,45 @@ export const streamAIResponse = async (messages, langCode, res, { sarvamKey, ope
     }
   };
 
-  // Try OpenAI streaming first (most reliable)
-  if (openaiKey) {
+  // 1. Try Gemini streaming first if configured (Default fast reasoning provider)
+  const effectiveGeminiKey = geminiKey || process.env.GEMINI_API_KEY;
+  if (effectiveGeminiKey) {
     try {
-      const { OpenAI } = await import('openai');
-      const openai = new OpenAI({ apiKey: openaiKey });
-
-      const stream = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        stream: true,
-        temperature: 0.7,
-        max_tokens: 350,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          ...(messages || [])
-        ]
-      });
-
-      for await (const chunk of stream) {
-        const token = chunk.choices[0]?.delta?.content || '';
-        if (!token) continue;
+      console.log('[Stream] Using native Gemini streamChat...');
+      await geminiProvider.streamChat(messages, {
+        apiKey: effectiveGeminiKey,
+        systemPrompt,
+        model: process.env.GEMINI_MODEL || 'gemini-3.8-flash'
+      }, (token) => {
+        if (!token) return;
         buffer += token;
         emit({ token });
-        if (/[।.!?]/.test(token) && buffer.trim().length > 15) flushSentence();
-      }
+        if (/[।.!?\n]/.test(token) && buffer.trim().length > 15) flushSentence();
+      });
+
+      flushSentence();
+      res.write('data: [DONE]\n\n');
+      res.end();
+      return;
+    } catch (err) {
+      console.warn('[Stream] Gemini streaming failed, checking fallbacks...', err.message);
+    }
+  }
+
+  // 2. Try OpenAI streaming
+  const effectiveOpenAIKey = openaiKey || process.env.OPENAI_API_KEY;
+  if (effectiveOpenAIKey) {
+    try {
+      console.log('[Stream] Using native OpenAI streamChat...');
+      await openaiProvider.streamChat(messages, {
+        apiKey: effectiveOpenAIKey,
+        systemPrompt
+      }, (token) => {
+        if (!token) return;
+        buffer += token;
+        emit({ token });
+        if (/[।.!?\n]/.test(token) && buffer.trim().length > 15) flushSentence();
+      });
 
       flushSentence();
       res.write('data: [DONE]\n\n');
@@ -54,9 +71,11 @@ export const streamAIResponse = async (messages, langCode, res, { sarvamKey, ope
     }
   }
 
-  // Try Sarvam streaming
-  if (sarvamKey) {
+  // 3. Try Sarvam streaming
+  const effectiveSarvamKey = sarvamKey || process.env.SARVAM_API_KEY;
+  if (effectiveSarvamKey) {
     try {
+      console.log('[Stream] Using Sarvam streaming...');
       const response = await axios.post('https://api.sarvam.ai/v1/chat/completions', {
         model: 'sarvam-105b',
         stream: true,
@@ -68,7 +87,7 @@ export const streamAIResponse = async (messages, langCode, res, { sarvamKey, ope
         temperature: 0.7
       }, {
         headers: {
-          'api-subscription-key': sarvamKey,
+          'api-subscription-key': effectiveSarvamKey,
           'Content-Type': 'application/json'
         },
         responseType: 'stream'
@@ -86,7 +105,7 @@ export const streamAIResponse = async (messages, langCode, res, { sarvamKey, ope
               if (!token) continue;
               buffer += token;
               emit({ token });
-              if (/[।.!?]/.test(token) && buffer.trim().length > 15) flushSentence();
+              if (/[।.!?\n]/.test(token) && buffer.trim().length > 15) flushSentence();
             } catch {}
           }
         });
@@ -99,23 +118,28 @@ export const streamAIResponse = async (messages, langCode, res, { sarvamKey, ope
       res.end();
       return;
     } catch (err) {
-      console.warn('[Stream] Sarvam streaming failed, using simulator...', err.message);
+      console.warn('[Stream] Sarvam streaming failed:', err.message);
     }
   }
 
-  // Simulator fallback — word by word
-  const fallbacks = {
-    'hi-IN': 'नमस्ते! मैं वाणी एआई हूँ। मैं आपकी सहायता के लिए यहाँ हूँ। आप मुझसे पीजी, नौकरी, या सरकारी योजनाओं के बारे में पूछ सकते हैं।',
-    'en-IN': 'Hello! I am Vani AI, your multilingual assistant. I can help you find PG accommodations, jobs, and information about government schemes.',
-    'ta-IN': 'வணக்கம்! நான் வாணி ஏஐ. நான் உங்களுக்கு பிஜி, வேலை மற்றும் அரசு திட்டங்கள் பற்றி உதவ முடியும்.',
-  };
-  const fallbackText = fallbacks[langCode] || fallbacks['en-IN'];
-  const words = fallbackText.split(' ');
-  for (const word of words) {
-    emit({ token: word + ' ' });
-    await new Promise(r => setTimeout(r, 60));
+  // No provider available or all failed — truthful error state, NO FAKE TOKENS!
+  if (process.env.VANI_DEMO_MODE === 'true') {
+    const fallbackText = 'Vani AI demo mode. Please configure your API key in Settings for live reasoning.';
+    emit({ token: fallbackText });
+    emit({ tts_sentence: fallbackText });
+    res.write('data: [DONE]\n\n');
+    res.end();
+    return;
   }
-  emit({ tts_sentence: fallbackText });
+
+  emit({
+    error: 'All configured AI providers failed or are unconfigured. Please check your provider settings.',
+    code: 'PROVIDER_UNAVAILABLE'
+  });
   res.write('data: [DONE]\n\n');
   res.end();
+};
+
+export default {
+  streamAIResponse
 };

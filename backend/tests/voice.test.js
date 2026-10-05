@@ -29,13 +29,13 @@ describe('Voice Routes', () => {
       expect(res.status).toBe(415);
     });
 
-    it('no API key -> returns simulated response', async () => {
+    it('no API key -> returns 503 provider unconfigured error', async () => {
       const buffer = Buffer.from('fake-audio-data');
       const res = await request(app)
         .post('/api/voice/stt')
         .attach('file', buffer, 'test.wav');
-      expect(res.status).toBe(200);
-      expect(res.body.transcript).toBeDefined();
+      expect(res.status).toBe(503);
+      expect(res.body.code).toBe('PROVIDER_NOT_CONFIGURED');
     });
   });
 
@@ -45,10 +45,10 @@ describe('Voice Routes', () => {
       expect(res.status).toBe(400);
     });
 
-    it('no API key -> returns simulated response with simulated:true', async () => {
+    it('no API key -> returns 503 provider unconfigured error', async () => {
       const res = await request(app).post('/api/voice/tts').send({ text: 'Hello' });
-      expect(res.status).toBe(200);
-      expect(res.body.simulated).toBe(true);
+      expect(res.status).toBe(503);
+      expect(res.body.code).toBe('PROVIDER_NOT_CONFIGURED');
     });
   });
 
@@ -58,10 +58,10 @@ describe('Voice Routes', () => {
       expect(res.status).toBe(400);
     });
 
-    it('no API key -> returns mock translation', async () => {
+    it('no API key -> returns 503 provider unconfigured error', async () => {
       const res = await request(app).post('/api/voice/translate').send({ input: 'Hello', target_language_code: 'hi-IN' });
-      expect(res.status).toBe(200);
-      expect(res.body.translated_text).toBeDefined();
+      expect(res.status).toBe(503);
+      expect(res.body.code).toBe('PROVIDER_NOT_CONFIGURED');
     });
   });
 
