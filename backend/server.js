@@ -17,6 +17,7 @@ import exportRoutes from './routes/export.js';
 import projectRoutes from './routes/project.js';
 import taskRoutes from './routes/task.js';
 import integrationRoutes from './routes/integration.js';
+import customAgentRoutes from './routes/customAgent.js';
 
 dotenv.config();
 
@@ -151,6 +152,7 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/project', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/integrations', integrationRoutes);
+app.use('/api/agents', customAgentRoutes);
 
 // Serve frontend build (production only — in dev, Vite runs separately)
 const publicDir = path.join(__dirname, 'public');

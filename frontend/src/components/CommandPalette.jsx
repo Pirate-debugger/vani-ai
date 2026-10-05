@@ -25,7 +25,10 @@ export default function CommandPalette({
   onOpenDocument,
   onSwitchMode,
   onToggleVoice,
-  onOpenSettings
+  onOpenSettings,
+  onOpenCustomAgentModal,
+  onOpenTasks,
+  onOpenDocuments
 }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState({ projects: [], documents: [], tasks: [] });
@@ -33,7 +36,7 @@ export default function CommandPalette({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
 
-  // Default Quick Commands
+  // Default Quick Commands (Section 52)
   const quickCommands = [
     {
       id: 'cmd-new-chat',
@@ -50,6 +53,14 @@ export default function CommandPalette({
       icon: Folder,
       category: 'Command',
       action: () => { onNewProject?.(); onClose(); }
+    },
+    {
+      id: 'cmd-create-agent',
+      title: 'Create Agent',
+      desc: 'Design and deploy a custom autonomous AI specialist',
+      icon: Sparkles,
+      category: 'Agent',
+      action: () => { onOpenCustomAgentModal?.(); onClose(); }
     },
     {
       id: 'cmd-mode-brd',
@@ -82,6 +93,22 @@ export default function CommandPalette({
       icon: Code2,
       category: 'Agent',
       action: () => { onSwitchMode?.('build'); onClose(); }
+    },
+    {
+      id: 'cmd-open-tasks',
+      title: 'Open Tasks',
+      desc: 'View execution backlog and generated development tasks',
+      icon: CheckSquare,
+      category: 'Workspace',
+      action: () => { onOpenTasks?.(); onClose(); }
+    },
+    {
+      id: 'cmd-open-docs',
+      title: 'Open Documents',
+      desc: 'Browse project artifacts, BRDs, PRDs, and architecture notes',
+      icon: FileText,
+      category: 'Workspace',
+      action: () => { onOpenDocuments?.(); onClose(); }
     },
     {
       id: 'cmd-toggle-voice',

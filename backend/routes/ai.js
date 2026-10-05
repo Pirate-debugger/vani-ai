@@ -48,14 +48,36 @@ export const resolveUserApiKeys = async (req) => {
   return keys;
 };
 
+// Idempotency cache to prevent duplicate job execution (Section 77)
+const idempotencyCache = new Map();
+const cleanupIdempotency = () => {
+  const now = Date.now();
+  for (const [key, val] of idempotencyCache.entries()) {
+    if (now - val.timestamp > 30000) {
+      idempotencyCache.delete(key);
+    }
+  }
+};
+setInterval(cleanupIdempotency, 60000);
+
 /**
  * Chat Completion route (/api/ai/chat)
  * Process prompts through master orchestrator
  */
 router.post('/chat', async (req, res) => {
   try {
-    const { prompt, messages, language_code, personality, profile, projectId, agentType } = req.body;
+    const { prompt, messages, language_code, personality, profile, projectId, agentType, requestId } = req.body;
     const userPrompt = prompt || (messages?.length ? messages[messages.length - 1].content : '');
+
+    // Idempotency check: if requestId already processed recently, return cached response
+    if (requestId && idempotencyCache.has(requestId)) {
+      const cached = idempotencyCache.get(requestId);
+      if (cached.result) return res.json(cached.result);
+      if (cached.promise) {
+        const waitedResult = await cached.promise;
+        return res.json(waitedResult);
+      }
+    }
 
     if (!userPrompt?.trim() && (!messages || messages.length === 0)) {
       return res.status(400).json({ error: 'Prompt or messages are required.', code: 'INVALID_INPUT' });
@@ -92,6 +114,10 @@ router.post('/chat', async (req, res) => {
       apiKeys
     });
 
+    if (requestId) {
+      idempotencyCache.set(requestId, { result, timestamp: Date.now() });
+    }
+
     return res.json(result);
   } catch (error) {
     console.error('[AI Chat Error]:', error.message);
@@ -120,8 +146,21 @@ router.post('/orchestrate-stream', async (req, res) => {
   };
 
   try {
-    const { prompt, messages, agentType, projectId, language_code, personality, profile } = req.body;
+    const { prompt, messages, agentType, projectId, language_code, personality, profile, requestId } = req.body;
     const userPrompt = prompt || (messages?.length ? messages[messages.length - 1].content : '');
+
+    // Duplicate execution protection (Section 77)
+    if (requestId && idempotencyCache.has(requestId)) {
+      const cached = idempotencyCache.get(requestId);
+      if (cached.inProgress) {
+        res.write(`data: ${JSON.stringify({ type: 'info', message: 'Task already executing' })}\n\n`);
+        return res.end();
+      }
+    }
+
+    if (requestId) {
+      idempotencyCache.set(requestId, { inProgress: true, timestamp: Date.now() });
+    }
 
     const authUser = getAuthUser(req);
 
@@ -154,11 +193,18 @@ router.post('/orchestrate-stream', async (req, res) => {
       onEvent
     });
 
+    if (requestId) {
+      idempotencyCache.set(requestId, { inProgress: false, result: finalResult, timestamp: Date.now() });
+    }
+
     res.write(`data: ${JSON.stringify({ type: 'final.result', result: finalResult })}\n\n`);
     res.write('data: [DONE]\n\n');
     res.end();
   } catch (error) {
     console.error('[Orchestrate Stream Error]:', error.message);
+    if (req.body?.requestId) {
+      idempotencyCache.delete(req.body.requestId);
+    }
     res.write(`data: ${JSON.stringify({ 
       type: 'error', 
       error: error.message || 'Stream processing failed', 

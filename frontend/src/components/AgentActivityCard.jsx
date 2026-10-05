@@ -14,7 +14,10 @@ import {
   ChevronDown,
   ChevronUp,
   ShieldCheck,
-  Zap
+  Zap,
+  Info,
+  Mic,
+  Bot
 } from 'lucide-react';
 
 const AGENT_CONFIGS = {
@@ -62,6 +65,7 @@ const AGENT_CONFIGS = {
 
 export default function AgentActivityCard({ execution, isLive = false, onStop, onRetry }) {
   const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [transparencyOpen, setTransparencyOpen] = useState(false);
 
   if (!execution) return null;
 
@@ -72,22 +76,30 @@ export default function AgentActivityCard({ execution, isLive = false, onStop, o
   const sources = execution.sources || execution.metadata?.sources || [];
   const providers = execution.providers || (execution.provider ? [execution.provider] : []);
   const tools = execution.toolsUsed || execution.tools || [];
+  const voiceUsed = execution.voiceUsed || execution.metadata?.voiceUsed;
 
   return (
     <div className="w-full my-3 rounded-xl border border-cyan-500/20 bg-[#0c0919]/90 backdrop-blur-md overflow-hidden shadow-lg shadow-cyan-950/20 text-left transition-all">
       {/* Top Header */}
       <div className="px-4 py-3 bg-white/[0.03] border-b border-white/[0.06] flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2.5">
+        <div 
+          className="flex items-center gap-2.5 cursor-pointer group"
+          onClick={() => setTransparencyOpen(prev => !prev)}
+          title="Click to view full execution transparency details"
+        >
           <span className="text-lg leading-none" role="img" aria-label="agent-icon">
             {config.icon}
           </span>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-sm text-white tracking-wide">
+              <span className="font-semibold text-sm text-white tracking-wide group-hover:text-cyan-300 transition-colors">
                 {execution.agentName || config.title}
               </span>
               <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${config.badgeClass}`}>
                 {agentId.toUpperCase()}
+              </span>
+              <span className="text-[10px] text-white/40 group-hover:text-cyan-400/80 flex items-center gap-1 transition-colors">
+                <Info size={11} /> Details
               </span>
             </div>
             {execution.plan && (
@@ -101,23 +113,25 @@ export default function AgentActivityCard({ execution, isLive = false, onStop, o
         {/* Live Status & Provider Badges */}
         <div className="flex items-center gap-2 flex-wrap">
           {providers.map((p, idx) => (
-            <span 
+            <button 
               key={idx}
-              className="inline-flex items-center gap-1 text-[11px] font-medium text-cyan-300/80 bg-cyan-950/40 border border-cyan-800/40 px-2 py-0.5 rounded-md"
+              onClick={() => setTransparencyOpen(prev => !prev)}
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-cyan-300/80 bg-cyan-950/40 border border-cyan-800/40 px-2 py-0.5 rounded-md hover:bg-cyan-900/40 transition-colors"
             >
               <Cpu size={11} className="text-cyan-400" />
-              {p === 'gemini' ? 'Gemini 3.5 Flash' : p === 'openai' ? 'OpenAI GPT-4o' : p === 'sarvam' ? 'Sarvam Indic' : p}
-            </span>
+              {p === 'gemini' ? 'Gemini 2.5' : p === 'openai' ? 'OpenAI GPT-4o' : p === 'sarvam' ? 'Sarvam Indic' : p}
+            </button>
           ))}
 
           {tools.length > 0 && tools.map((t, idx) => (
-            <span 
+            <button 
               key={idx}
-              className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-300/80 bg-indigo-950/40 border border-indigo-800/40 px-2 py-0.5 rounded-md"
+              onClick={() => setTransparencyOpen(prev => !prev)}
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-300/80 bg-indigo-950/40 border border-indigo-800/40 px-2 py-0.5 rounded-md hover:bg-indigo-900/40 transition-colors"
             >
               <Globe size={11} className="text-indigo-400" />
-              {t.includes('tinyfish') || t.includes('web') ? 'TinyFish Live Web' : t}
-            </span>
+              {t.includes('tinyfish') || t.includes('web') ? 'TinyFish Web' : t}
+            </button>
           ))}
 
           <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full ${
@@ -155,6 +169,78 @@ export default function AgentActivityCard({ execution, isLive = false, onStop, o
           )}
         </div>
       </div>
+
+      {/* Advanced Transparency Drawer (Section 60) */}
+      {transparencyOpen && (
+        <div className="px-4 py-3 bg-cyan-950/20 border-b border-cyan-800/30 animate-fade-in text-xs">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-bold text-cyan-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+              <Sparkles size={12} className="text-cyan-400" />
+              Execution Details & Provenance
+            </span>
+            <button 
+              onClick={() => setTransparencyOpen(false)}
+              className="text-white/40 hover:text-white text-[11px]"
+            >
+              ✕ Close
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-white/80">
+            {/* Reasoning Engine */}
+            <div className="p-2 rounded-lg bg-black/40 border border-white/[0.05] flex items-center justify-between">
+              <span className="text-white/50">Reasoning Engine</span>
+              <span className="font-medium text-cyan-300 flex items-center gap-1">
+                <Cpu size={12} />
+                {providers.includes('gemini') ? 'Google Gemini 2.5 Flash' :
+                 providers.includes('openai') ? 'OpenAI GPT-4o' :
+                 providers.includes('sarvam') ? 'Sarvam Indic Engine' : 
+                 (providers[0] || 'Auto Router')}
+              </span>
+            </div>
+
+            {/* Web Research Layer */}
+            {(tools.some(t => t.includes('web') || t.includes('tinyfish')) || sources.length > 0) && (
+              <div className="p-2 rounded-lg bg-black/40 border border-white/[0.05] flex items-center justify-between">
+                <span className="text-white/50">Web Research</span>
+                <span className="font-medium text-indigo-300 flex items-center gap-1">
+                  <Globe size={12} />
+                  TinyFish Live Search & Fetch
+                </span>
+              </div>
+            )}
+
+            {/* Voice Layer */}
+            {voiceUsed && (
+              <div className="p-2 rounded-lg bg-black/40 border border-white/[0.05] flex items-center justify-between">
+                <span className="text-white/50">Voice Layer</span>
+                <span className="font-medium text-amber-300 flex items-center gap-1">
+                  <Mic size={12} />
+                  Sarvam Saaras v4 STT / Bulbul v3 TTS
+                </span>
+              </div>
+            )}
+
+            {/* Verified Sources */}
+            {sources.length > 0 && (
+              <div className="p-2 rounded-lg bg-black/40 border border-white/[0.05] flex items-center justify-between">
+                <span className="text-white/50">Verified Sources</span>
+                <span className="font-semibold text-emerald-400">
+                  {sources.length} Live Citations
+                </span>
+              </div>
+            )}
+
+            {/* Execution Status */}
+            <div className="p-2 rounded-lg bg-black/40 border border-white/[0.05] flex items-center justify-between">
+              <span className="text-white/50">Execution State</span>
+              <span className="font-medium text-white/90 capitalize">
+                {status}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Execution Steps Checklist */}
       {steps.length > 0 && (

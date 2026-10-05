@@ -22,6 +22,7 @@ model User {
   sessions         ChatSession[]
   apiKeys      ApiKey[]
   projects     Project[]
+  customAgents CustomAgent[]
 }
 
 model ChatSession {
@@ -128,5 +129,21 @@ model Task {
   source      String     @default("voice")
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+}
+
+model CustomAgent {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  instructions   String
+  preferredModel String   @default("auto") // auto, openai, gemini, sarvam
+  tools          String   @default("[]")   // JSON array: ["web_search", "web_fetch", "browser", "project_knowledge", "documents"]
+  autonomy       String   @default("auto") // ask_before, auto, manual
+  language       String   @default("hi,en") // hi, en, hinglish
+  outputStyle    String   @default("detailed") // concise, detailed, structured
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 

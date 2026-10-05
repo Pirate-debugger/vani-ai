@@ -33,15 +33,18 @@ import {
   Flame,
   Code2,
   ListTodo,
-  CheckSquare
+  CheckSquare,
+  Bot
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
+import { useLocation } from 'react-router-dom';
 import { CANONICAL_AGENTS, PRIMARY_MODES, ADVANCED_AGENTS, getAgentDef } from '../config/canonicalAgents';
 import AgentActivityCard from '../components/AgentActivityCard';
 import VoiceOrb from '../components/VoiceOrb';
 import DocumentViewer from '../components/DocumentViewer';
 import CommandPalette from '../components/CommandPalette';
+import CustomAgentModal from '../components/CustomAgentModal';
 
 export default function Workspace({
   currentLang,
@@ -126,10 +129,46 @@ export default function Workspace({
   const activeProjectDocCount = activeProject?._count?.documents ?? (activeProject?.documents?.length || 0);
   const activeProjectTaskCount = activeProject?._count?.tasks ?? 0;
 
-  // Selected agent definition
+  const location = useLocation();
+
+  // Custom Agents State (Section 25 & 26)
+  const [customAgents, setCustomAgents] = useState([]);
+  const [showCustomAgentModal, setShowCustomAgentModal] = useState(false);
+
+  const fetchCustomAgents = async () => {
+    try {
+      const res = await axios.get('/api/agents/custom', { withCredentials: true });
+      if (Array.isArray(res.data)) {
+        setCustomAgents(res.data);
+      }
+    } catch (err) {
+      console.warn('Failed to load custom agents:', err.message);
+    }
+  };
+
+  useEffect(() => {
+    fetchCustomAgents();
+  }, []);
+
+  // Selected agent definition (supports both canonical & custom agents)
   const selectedAgentDef = useMemo(() => {
+    if (selectedAgent?.startsWith('custom_')) {
+      const customId = selectedAgent.replace('custom_', '');
+      const found = customAgents.find(a => a.id === customId);
+      if (found) {
+        return {
+          id: selectedAgent,
+          name: found.name,
+          icon: '🧠',
+          description: found.description || 'Custom autonomous agent',
+          capabilities: Array.isArray(found.tools) ? found.tools : [],
+          preferredProvider: found.preferredModel || 'auto',
+          tools: Array.isArray(found.tools) ? found.tools : []
+        };
+      }
+    }
     return getAgentDef(selectedAgent);
-  }, [selectedAgent]);
+  }, [selectedAgent, customAgents]);
 
   // ─── Fetch User Projects ──────────────────────────────────────────────────
   const fetchProjects = async () => {
@@ -151,15 +190,19 @@ export default function Workspace({
     fetchProjects();
   }, []);
 
-  // Listen to URL query params ?projectId= (Section 29)
+  // Synchronize state with URL query params ?projectId= & ?agent= (Section 46)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(location.search);
     const pId = params.get('projectId');
     if (pId && pId !== selectedProjectId) {
       setSelectedProjectId(pId);
       localStorage.setItem('vani_active_project_id', pId);
     }
-  }, []);
+    const aId = params.get('agent');
+    if (aId && aId !== selectedAgent) {
+      setSelectedAgent(aId);
+    }
+  }, [location.search]);
 
   const handleSelectProject = (projId) => {
     setSelectedProjectId(projId);
@@ -169,6 +212,16 @@ export default function Workspace({
     const url = new URL(window.location);
     if (projId) url.searchParams.set('projectId', projId);
     else url.searchParams.delete('projectId');
+    window.history.replaceState({}, '', url);
+  };
+
+  const handleSelectAgent = (agentId) => {
+    setSelectedAgent(agentId);
+    setAgentDropdownOpen(false);
+    // Sync URL without reload
+    const url = new URL(window.location);
+    if (agentId && agentId !== 'auto') url.searchParams.set('agent', agentId);
+    else url.searchParams.delete('agent');
     window.history.replaceState({}, '', url);
   };
 
@@ -894,12 +947,12 @@ export default function Workspace({
           {/* ── Chat Composer & Simplified Mode Selector (Section 5) ──────── */}
           <div className="p-3 sm:p-4 bg-[#090714]/90 border-t border-white/10 backdrop-blur-lg">
             
-            {/* Mode Selector (Section 5: Auto, Chat, Research, Plan, Build + More) */}
+            {/* Mode Selector (Section 5 & 8: Auto, Chat, Research, Plan, Build + My Agents & More) */}
             <div className="flex items-center gap-1.5 mb-2.5 overflow-x-auto pb-1 custom-scrollbar text-xs">
               {PRIMARY_MODES.map(mode => (
                 <button
                   key={mode.id}
-                  onClick={() => setSelectedAgent(mode.id)}
+                  onClick={() => handleSelectAgent(mode.id)}
                   className={`px-3 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
                     selectedAgent === mode.id
                       ? 'bg-cyber-cyan/20 text-cyber-cyan border border-cyber-cyan/40 shadow-sm'
@@ -911,11 +964,11 @@ export default function Workspace({
                 </button>
               ))}
 
-              {/* More Agents Dropdown */}
+              {/* More Agents & Custom Agents Dropdown (Section 8 & 25) */}
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setAgentDropdownOpen(!agentDropdownOpen)}
-                  className={`px-3 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1 ${
+                  className={`px-3 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
                     !PRIMARY_MODES.some(m => m.id === selectedAgent)
                       ? 'bg-cyber-purple/20 text-cyber-purple border border-cyber-purple/40 shadow-sm'
                       : 'bg-white/[0.03] text-white/50 hover:text-white border border-white/5'
@@ -926,14 +979,62 @@ export default function Workspace({
                 </button>
 
                 {agentDropdownOpen && (
-                  <div className="absolute left-0 bottom-full mb-2 w-64 rounded-2xl bg-[#0F0C1E] border border-white/10 shadow-2xl p-2 z-50 text-xs animate-in fade-in zoom-in-95 max-h-60 overflow-y-auto custom-scrollbar">
-                    <div className="text-[10px] font-bold text-white/40 uppercase tracking-wider px-2 py-1">
+                  <div className="absolute left-0 bottom-full mb-2 w-72 rounded-2xl bg-[#0F0C1E] border border-white/10 shadow-2xl p-2 z-50 text-xs animate-in fade-in zoom-in-95 max-h-72 overflow-y-auto custom-scrollbar">
+                    
+                    {/* Section: My Custom Agents */}
+                    <div className="flex items-center justify-between px-2 py-1.5 border-b border-white/5 mb-1">
+                      <span className="text-[10px] font-bold text-cyber-cyan uppercase tracking-wider flex items-center gap-1">
+                        <Bot size={11} /> My Agents ({customAgents.length})
+                      </span>
+                      <button
+                        onClick={() => { setAgentDropdownOpen(false); setShowCustomAgentModal(true); }}
+                        className="text-[10px] font-bold text-cyber-purple hover:text-cyber-cyan transition-colors flex items-center gap-0.5"
+                      >
+                        <Plus size={11} /> Create
+                      </button>
+                    </div>
+
+                    {customAgents.length > 0 ? (
+                      <div className="space-y-1 mb-2">
+                        {customAgents.map(ca => {
+                          const caId = `custom_${ca.id}`;
+                          const isSelected = selectedAgent === caId;
+                          return (
+                            <button
+                              key={ca.id}
+                              onClick={() => handleSelectAgent(caId)}
+                              className={`w-full text-left p-2 rounded-xl flex items-center justify-between transition-all ${
+                                isSelected ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'hover:bg-white/5 text-white/80'
+                              }`}
+                            >
+                              <div className="min-w-0 pr-2">
+                                <div className="font-semibold text-white truncate flex items-center gap-1.5">
+                                  <span>🧠</span>
+                                  <span>{ca.name}</span>
+                                </div>
+                                {ca.description && (
+                                  <div className="text-[10px] text-white/40 truncate">{ca.description}</div>
+                                )}
+                              </div>
+                              {isSelected && <Check size={13} className="text-cyan-400 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="px-2 py-2 text-[11px] text-white/40 text-center italic mb-1">
+                        No custom agents yet. Click "+ Create" above.
+                      </div>
+                    )}
+
+                    {/* Section: Advanced Canonical Agents */}
+                    <div className="text-[10px] font-bold text-white/40 uppercase tracking-wider px-2 py-1 border-t border-white/5 pt-1.5">
                       Advanced Agents
                     </div>
                     {ADVANCED_AGENTS.map(agent => (
                       <button
                         key={agent.id}
-                        onClick={() => { setSelectedAgent(agent.id); setAgentDropdownOpen(false); }}
+                        onClick={() => handleSelectAgent(agent.id)}
                         className={`w-full text-left p-2 rounded-xl flex items-center justify-between transition-all ${
                           selectedAgent === agent.id ? 'bg-cyber-purple/20 text-cyber-purple font-bold' : 'hover:bg-white/5 text-white/80'
                         }`}
@@ -1099,6 +1200,54 @@ export default function Workspace({
           </div>
         </div>
       )}
+
+      {/* ── Global Command Palette (Section 51 & 52) ────────────────────────── */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onNewChat={() => {
+          setMessages([]);
+          setActiveDocument(null);
+          setActiveExecution(null);
+          setInputText('');
+        }}
+        onNewProject={() => setShowNewProjectModal(true)}
+        onSelectProject={(projId) => handleSelectProject(projId)}
+        onOpenDocument={(doc) => {
+          setActiveDocument(doc);
+          setViewMode('document');
+        }}
+        onSwitchMode={(modeId) => handleSelectAgent(modeId)}
+        onToggleVoice={() => {
+          if (isRecording) stopRecording();
+          else startRecording();
+        }}
+        onOpenSettings={() => {
+          window.location.href = '/settings';
+        }}
+        onOpenCustomAgentModal={() => setShowCustomAgentModal(true)}
+        onOpenTasks={() => {
+          if (activeDocument) {
+            setViewMode('document');
+          }
+        }}
+        onOpenDocuments={() => {
+          if (activeProject?.documents?.length > 0) {
+            setActiveDocument(activeProject.documents[0]);
+            setViewMode('document');
+          }
+        }}
+      />
+
+      {/* ── Custom Agent Builder Modal (Section 25 & 26) ────────────────────── */}
+      <CustomAgentModal
+        isOpen={showCustomAgentModal}
+        onClose={() => setShowCustomAgentModal(false)}
+        onAgentCreated={(newAgent) => {
+          fetchCustomAgents();
+          handleSelectAgent(`custom_${newAgent.id}`);
+        }}
+      />
     </div>
   );
 }

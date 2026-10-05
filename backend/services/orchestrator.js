@@ -72,14 +72,46 @@ export async function orchestrate({
   if (selectedAgentId === 'task_command') selectedAgentId = 'task';
   if (selectedAgentId === 'market_research') selectedAgentId = 'research';
 
-  const agentDef = getAgent(selectedAgentId);
+  // Check for custom agent
+  let customAgentRecord = null;
+  if (selectedAgentId && (selectedAgentId.startsWith('custom_') || selectedAgentId.length > 20)) {
+    try {
+      const cleanId = selectedAgentId.replace(/^custom_/, '');
+      customAgentRecord = await prisma.customAgent.findUnique({ where: { id: cleanId } });
+    } catch (e) {
+      console.warn('[Orchestrator] Custom agent lookup warn:', e.message);
+    }
+  }
+
+  let agentDef;
+  if (customAgentRecord) {
+    let customTools = [];
+    try { customTools = JSON.parse(customAgentRecord.tools || '[]'); } catch { customTools = []; }
+    const hasWebSearch = customTools.includes('web_search') || customTools.includes('web_fetch');
+
+    agentDef = {
+      id: `custom_${customAgentRecord.id}`,
+      name: customAgentRecord.name,
+      description: customAgentRecord.description || 'Custom User Agent',
+      instructions: customAgentRecord.instructions,
+      preferredProvider: customAgentRecord.preferredModel !== 'auto' ? customAgentRecord.preferredModel : 'gemini',
+      fallbackProviders: ['openai', 'gemini'],
+      supportsWebResearch: hasWebSearch,
+      supportsTools: customTools.length > 0,
+      tools: hasWebSearch ? ['tinyfish.search', 'tinyfish.fetch'] : [],
+      outputType: 'text',
+      isCustom: true
+    };
+  } else {
+    agentDef = getAgent(selectedAgentId);
+  }
 
   // 2. SIMPLE CONVERSATION & GENERAL CHAT (Rule 41: No unnecessary agentic steps)
   const isDocAgent = ['brd', 'prd', 'technical', 'build', 'plan'].includes(agentDef.id);
   const isResearchAgent = agentDef.id === 'research';
   const explicitlyRequestsResearch = needsWebResearch(userPrompt) || shouldUseLiveResearch(userPrompt, agentDef.id);
 
-  if (!isDocAgent && !isResearchAgent && !explicitlyRequestsResearch && agentDef.id === 'general') {
+  if (!isDocAgent && !isResearchAgent && !explicitlyRequestsResearch && agentDef.id === 'general' && !agentDef.isCustom) {
     emit({ 
       type: 'agent.started', 
       agent: agentDef.id, 
@@ -107,6 +139,14 @@ export async function orchestrate({
       provider: resolution.providerName,
       ...apiKeys
     });
+
+    // Section 21: Progressive token streaming
+    if (chatRes?.response) {
+      const tokens = chatRes.response.split(/(\s+)/);
+      for (const token of tokens) {
+        emit({ type: 'stream.chunk', delta: token });
+      }
+    }
 
     emit({ 
       type: 'agent.step', 
@@ -273,6 +313,82 @@ User Request: "${userPrompt}"`;
       agentExecution: {
         agent: 'research',
         agentName: 'Research Agent',
+        providersUsed,
+        steps: executionSteps
+      }
+    };
+  }
+
+  // 5B. CUSTOM AGENT EXECUTION (Section 25, 27, 68)
+  if (agentDef.isCustom) {
+    emit({
+      type: 'agent.step',
+      step: 'generation',
+      status: 'running',
+      title: `Generating with ${agentDef.name}...`,
+      provider: agentDef.preferredProvider
+    });
+
+    let customPrompt = `${agentDef.instructions}\n\nUser Request: "${userPrompt}"`;
+    if (liveResearchData && liveResearchData.available && liveResearchData.sources?.length > 0) {
+      customPrompt += `\n\n=== VERIFIED LIVE WEB RESEARCH ===\n` +
+        liveResearchData.sources.map((s, i) => `[${i + 1}] ${s.title} (${s.url}): ${s.snippet}`).join('\n') +
+        `\n=== END RESEARCH DATA ===`;
+    }
+
+    const customResolution = resolveProviderForCapability(
+      agentDef.supportsWebResearch ? 'research' : 'general_chat',
+      apiKeys
+    );
+    const chosenProvider = (agentDef.preferredProvider && agentDef.preferredProvider !== 'auto') 
+      ? agentDef.preferredProvider 
+      : customResolution.providerName;
+
+    const aiRes = await getAIResponse({
+      messages,
+      prompt: customPrompt,
+      langCode: languageCode,
+      personality: 'custom',
+      operationType: 'GENERAL_CHAT',
+      provider: chosenProvider,
+      ...apiKeys
+    });
+
+    if (aiRes?.response) {
+      const tokens = aiRes.response.split(/(\s+)/);
+      for (const token of tokens) {
+        emit({ type: 'stream.chunk', delta: token });
+      }
+    }
+
+    emit({
+      type: 'agent.step',
+      step: 'generation',
+      status: 'completed',
+      title: `${agentDef.name} response ready`,
+      provider: aiRes.model || chosenProvider
+    });
+
+    const providersUsed = Array.from(new Set([
+      aiRes.model || chosenProvider,
+      liveResearchData?.available ? 'TinyFish' : null
+    ].filter(Boolean)));
+
+    emit({
+      type: 'agent.completed',
+      agent: agentDef.id,
+      name: agentDef.name,
+      providersUsed
+    });
+
+    return {
+      response: aiRes.response,
+      sources: liveResearchData?.sources || [],
+      evidence: liveResearchData?.evidence || [],
+      model: aiRes.model || chosenProvider,
+      agentExecution: {
+        agent: agentDef.id,
+        agentName: agentDef.name,
         providersUsed,
         steps: executionSteps
       }
