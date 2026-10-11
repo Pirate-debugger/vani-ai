@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Bot, ArrowLeft, Plus, Search, Activity, Plug, X, History, ListTodo } from 'lucide-react';
+import { Bot, ArrowLeft, Plus, Search, Activity, Plug, X, History, ListTodo, Repeat, Clock } from 'lucide-react';
 import DocumentViewer from '../components/DocumentViewer';
 import RoadmapTimeline from '../components/RoadmapTimeline';
 import IntegrationsPanel from '../components/IntegrationsPanel';
 import TaskBoard from '../components/TaskBoard';
+import ScheduledActionCard from '../components/ScheduledActionCard';
 
 const AGENTS = [
   { id: 'brd', label: 'BRD Agent', desc: 'Generate Business Requirements' },
@@ -25,7 +26,16 @@ const Project = () => {
   const [loading, setLoading] = useState(true);
   const [selectedDocId, setSelectedDocId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState('documents'); // 'documents' or 'integrations'
+  const [activeTab, setActiveTab] = useState('documents'); // 'documents' | 'tasks' | 'automations' | 'integrations'
+
+  // Automations / Scheduled Actions State (Section 24)
+  const [automations, setAutomations] = useState([]);
+  const [automationsLoading, setAutomationsLoading] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleTitle, setScheduleTitle] = useState('');
+  const [scheduleRecurrence, setScheduleRecurrence] = useState('Every Monday at 8:00 AM');
+  const [scheduleType, setScheduleType] = useState('research');
+  const [isScheduling, setIsScheduling] = useState(false);
 
   // Agent State
   const [selectedAgent, setSelectedAgent] = useState(null);
@@ -55,6 +65,53 @@ const Project = () => {
   useEffect(() => {
     fetchProject();
   }, [id]);
+
+  const fetchAutomations = async () => {
+    setAutomationsLoading(true);
+    try {
+      const res = await axios.get(`/api/schedule?projectId=${id}`, { withCredentials: true });
+      if (res.data?.actions) {
+        setAutomations(res.data.actions);
+      }
+    } catch (err) {
+      console.error('Failed to load project automations:', err);
+    } finally {
+      setAutomationsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'automations') {
+      fetchAutomations();
+    }
+  }, [activeTab, id]);
+
+  const handleCreateAutomation = async (e) => {
+    e.preventDefault();
+    if (!scheduleTitle.trim()) return;
+    setIsScheduling(true);
+    try {
+      const res = await axios.post('/api/schedule', {
+        title: scheduleTitle.trim(),
+        schedule: scheduleRecurrence,
+        actionType: scheduleType,
+        projectId: id,
+        payload: { prompt: scheduleTitle.trim(), query: scheduleTitle.trim() },
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata'
+      }, { withCredentials: true });
+
+      if (res.data?.action) {
+        setAutomations(prev => [res.data.action, ...prev]);
+        setShowScheduleModal(false);
+        setScheduleTitle('');
+      }
+    } catch (err) {
+      console.error('Failed to schedule action:', err);
+      alert(err.response?.data?.error || 'Failed to create scheduled action');
+    } finally {
+      setIsScheduling(false);
+    }
+  };
 
   // Expose a way to refresh the project (e.g., after generating a document)
   useEffect(() => {
@@ -218,6 +275,9 @@ const Project = () => {
             <button onClick={() => setActiveTab('tasks')} className={`px-4 py-1 text-sm font-bold rounded-md transition-all flex items-center gap-1.5 ${activeTab === 'tasks' ? 'bg-cyber-purple text-white shadow-lg' : 'text-white/50 hover:text-white'}`}>
               <ListTodo size={14} /> Tasks
             </button>
+            <button onClick={() => setActiveTab('automations')} className={`px-4 py-1 text-sm font-bold rounded-md transition-all flex items-center gap-1.5 ${activeTab === 'automations' ? 'bg-cyber-purple text-white shadow-lg' : 'text-white/50 hover:text-white'}`}>
+              <Repeat size={14} /> Automations
+            </button>
             <button onClick={() => setActiveTab('integrations')} className={`px-4 py-1 text-sm font-bold rounded-md transition-all flex items-center gap-2 ${activeTab === 'integrations' ? 'bg-cyber-purple text-white shadow-lg' : 'text-white/50 hover:text-white'}`}>
               <Plug size={14} /> Integrations
             </button>
@@ -304,6 +364,62 @@ const Project = () => {
           ) : activeTab === 'tasks' ? (
             <div className="h-full overflow-y-auto custom-scrollbar p-2">
               <TaskBoard projectId={id} />
+            </div>
+          ) : activeTab === 'automations' ? (
+            <div className="h-full overflow-y-auto custom-scrollbar p-4 max-w-4xl mx-auto">
+              <div className="flex items-center justify-between mb-6 pb-3 border-b border-white/10">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    <Repeat className="text-cyan-400" size={18} />
+                    Project Automations & Scheduled Workflows
+                  </h2>
+                  <p className="text-xs text-white/50 mt-0.5">
+                    Recurring and scheduled agent workflows that automatically execute with full project memory.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowScheduleModal(true)}
+                  className="px-3.5 py-1.5 bg-gradient-to-r from-cyber-purple to-cyan-500 hover:opacity-90 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5 transition-all"
+                >
+                  <Plus size={13} />
+                  New Automation
+                </button>
+              </div>
+
+              {automationsLoading ? (
+                <div className="text-center py-16 text-xs text-white/40 animate-pulse">
+                  Loading project scheduled actions...
+                </div>
+              ) : automations.length === 0 ? (
+                <div className="text-center py-16 px-4 rounded-2xl border border-white/5 bg-white/[0.01]">
+                  <Clock size={32} className="mx-auto text-white/20 mb-3" />
+                  <h3 className="text-sm font-bold text-white/80 mb-1">No automations scheduled yet</h3>
+                  <p className="text-xs text-white/40 max-w-md mx-auto mb-4">
+                    Schedule recurring competitor analysis, weekly BRD updates, or follow-up tasks that run automatically.
+                  </p>
+                  <button
+                    onClick={() => setShowScheduleModal(true)}
+                    className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-white rounded-xl transition-all inline-flex items-center gap-1.5"
+                  >
+                    <Plus size={13} /> Schedule First Workflow
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {automations.map(action => (
+                    <ScheduledActionCard
+                      key={action.id}
+                      action={action}
+                      onActionUpdated={(updated) => {
+                        setAutomations(prev => prev.map(a => a.id === updated.id ? updated : a));
+                      }}
+                      onActionDeleted={(delId) => {
+                        setAutomations(prev => prev.filter(a => a.id !== delId));
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           ) : documentToView?.type === 'roadmap' ? (
             <RoadmapTimeline document={documentToView} />
@@ -420,6 +536,85 @@ const Project = () => {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Schedule Automation Modal */}
+      {showScheduleModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="border border-white/10 w-full max-w-md rounded-2xl bg-[#0e0a1f] p-6 shadow-2xl relative">
+            <div className="flex items-center justify-between mb-4 pb-2 border-b border-white/10">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Repeat className="text-cyan-400" size={16} />
+                Schedule New Workflow
+              </h3>
+              <button 
+                onClick={() => setShowScheduleModal(false)}
+                className="text-white/40 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleCreateAutomation} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-white/70 font-semibold mb-1">Workflow Title / Prompt</label>
+                <input
+                  type="text"
+                  value={scheduleTitle}
+                  onChange={(e) => setScheduleTitle(e.target.value)}
+                  placeholder="e.g. Research PG competitors and check for pricing changes"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white placeholder-white/30 focus:outline-none focus:border-cyan-400"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-white/70 font-semibold mb-1">Recurrence Schedule</label>
+                <select
+                  value={scheduleRecurrence}
+                  onChange={(e) => setScheduleRecurrence(e.target.value)}
+                  className="w-full bg-[#15102a] border border-white/10 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-400"
+                >
+                  <option value="Every Monday at 8:00 AM">Every Monday at 8:00 AM</option>
+                  <option value="Every morning at 8:00 AM">Every morning at 8:00 AM</option>
+                  <option value="Every Sunday at 8:00 PM">Every Sunday at 8:00 PM</option>
+                  <option value="Tomorrow at 8:00 PM">Tomorrow at 8:00 PM (Once)</option>
+                  <option value="In 2 hours">In 2 hours</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-white/70 font-semibold mb-1">Action Type</label>
+                <select
+                  value={scheduleType}
+                  onChange={(e) => setScheduleType(e.target.value)}
+                  className="w-full bg-[#15102a] border border-white/10 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-400"
+                >
+                  <option value="research">Research Agent (Live web search & competitor diff)</option>
+                  <option value="brd">BRD Agent (Requirement update)</option>
+                  <option value="reminder">Reminder & Follow-up</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setShowScheduleModal(false)}
+                  className="px-4 py-2 rounded-xl text-white/60 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isScheduling || !scheduleTitle.trim()}
+                  className="px-4 py-2 bg-gradient-to-r from-cyber-purple to-cyan-500 text-white font-bold rounded-xl shadow-md hover:opacity-90 disabled:opacity-50"
+                >
+                  {isScheduling ? 'Scheduling...' : 'Save Automation'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

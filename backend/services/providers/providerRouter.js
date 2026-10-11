@@ -185,11 +185,25 @@ export async function executeReasoning(prompt, options = {}) {
   const apiKeys = options.apiKeys || {};
 
   const resolution = resolveProviderForCapability(capability, apiKeys);
-  const provider = resolution.provider;
+  let provider = resolution.provider;
+  let providerName = resolution.providerName;
+
+  if (options.preferredProvider) {
+    if (options.preferredProvider === 'gemini') {
+      provider = geminiProvider;
+      providerName = 'gemini';
+    } else if (options.preferredProvider === 'openai') {
+      provider = openaiProvider;
+      providerName = 'openai';
+    } else if (options.preferredProvider === 'sarvam') {
+      provider = sarvamProvider;
+      providerName = 'sarvam';
+    }
+  }
 
   const execOptions = {
     ...options,
-    apiKey: apiKeys[`${resolution.providerName}Key`]
+    apiKey: apiKeys[`${providerName}Key`]
   };
 
   try {

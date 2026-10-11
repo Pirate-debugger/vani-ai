@@ -12,6 +12,7 @@ import geminiProvider from './providers/geminiProvider.js';
 import openaiProvider from './providers/openaiProvider.js';
 import prisma from '../lib/prisma.js';
 import { verifyProjectOwnership } from '../middleware/auth.js';
+import { parseTemporalIntent, createScheduledAction } from './schedulerService.js';
 
 /**
  * Master AI Orchestrator for Vani AI
@@ -25,6 +26,8 @@ export async function orchestrate({
   agentType,
   projectId = null,
   userId = null,
+  sessionId = null,
+  timeContext = null,
   requestId = null,
   languageCode = 'hi-IN',
   personality = 'respectful',
@@ -100,12 +103,23 @@ export async function orchestrate({
           requestId,
           userId: validDbUserId,
           projectId: projectId || null,
+          sessionId: sessionId || null,
           agentId: agentType || 'auto',
           mode: 'auto',
           status: 'running',
           prompt: userPrompt
         }
       });
+
+      if (sessionId) {
+        await prisma.chatSession.update({
+          where: { id: sessionId },
+          data: {
+            activeRunId: agentRunRecord.id,
+            currentMode: agentType || 'auto'
+          }
+        }).catch(() => {});
+      }
     } catch (e) {
       if (e.code === 'TASK_ALREADY_RUNNING') throw e;
       console.warn('[Orchestrator] AgentRun tracking warn:', e.message);
@@ -121,6 +135,34 @@ export async function orchestrate({
     let selectedAgentId = agentType;
     if (!selectedAgentId || selectedAgentId === 'auto') {
       selectedAgentId = await identifyAgentIntent(userPrompt, apiKeys);
+    }
+
+    // Temporal Intent Check (Section 11, 12, 18, 87)
+    let createdScheduledAction = null;
+    const userTz = timeContext?.timezone || 'Asia/Kolkata';
+    const temporal = parseTemporalIntent(userPrompt, userTz);
+    if (temporal.hasTemporalIntent && validDbUserId) {
+      try {
+        createdScheduledAction = await createScheduledAction({
+          userId: validDbUserId,
+          projectId: projectId || null,
+          sessionId: sessionId || null,
+          title: temporal.title,
+          actionType: temporal.actionType,
+          payload: { prompt: temporal.prompt },
+          schedule: temporal.schedule,
+          timezone: temporal.timezone,
+          nextRunAt: temporal.nextRunAt
+        });
+
+        emit({
+          type: 'action.scheduled',
+          scheduledAction: createdScheduledAction,
+          message: `Scheduled automation: "${createdScheduledAction.title}" for ${createdScheduledAction.schedule} (${createdScheduledAction.timezone})`
+        });
+      } catch (schErr) {
+        console.warn('[Orchestrator] Temporal schedule creation warn:', schErr.message);
+      }
     }
 
     // Canonical normalization
@@ -294,10 +336,50 @@ export async function orchestrate({
         }).catch(err => console.warn('[Orchestrator] AgentRun finalize warn:', err.message));
       }
 
+      if (sessionId) {
+        await prisma.chatSession.update({
+          where: { id: sessionId },
+          data: {
+            activeRunId: null,
+            currentMode: 'chat'
+          }
+        }).catch(() => {});
+
+        await prisma.chatMessage.createMany({
+          data: [
+            { sessionId, role: 'user', content: userPrompt, model: null },
+            { sessionId, role: 'assistant', content: streamedResponse, model: usedModel }
+          ]
+        }).catch(() => {});
+      }
+
       return finalOutput;
     }
 
     // 3. START ACTUAL AGENT WORKFLOW
+    // Section 6: Emit Lightweight Agent Transition Event (150-250ms feel)
+    emit({
+      type: 'agent.transition',
+      fromMode: 'chat',
+      toMode: agentDef.id,
+      agent: agentDef.id,
+      name: agentDef.name,
+      reason: agentDef.id === 'research'
+        ? 'Live competitor and web research is required.'
+        : agentDef.id === 'brd'
+        ? 'Generating comprehensive Business Requirements Document.'
+        : agentDef.id === 'prd'
+        ? 'Product Requirements and prioritization framework required.'
+        : agentDef.id === 'build' || agentDef.id === 'plan'
+        ? 'Decomposing requirements into implementation roadmap and tasks.'
+        : `Vani switched to ${agentDef.name} for this request.`,
+      capabilities: {
+        brain: 'Gemini',
+        web: (agentDef.supportsWebResearch || explicitlyRequestsResearch) ? 'TinyFish' : null,
+        voice: 'Sarvam'
+      }
+    });
+
     emit({ 
       type: 'agent.started', 
       agent: agentDef.id, 
@@ -487,6 +569,37 @@ User Request: "${userPrompt}"`;
         }).catch(() => {});
       }
 
+      if (sessionId) {
+        await prisma.chatSession.update({
+          where: { id: sessionId },
+          data: {
+            activeRunId: null,
+            currentMode: 'research'
+          }
+        }).catch(() => {});
+
+        await prisma.chatMessage.createMany({
+          data: [
+            { sessionId, role: 'user', content: userPrompt, model: null },
+            { sessionId, role: 'assistant', content: streamedText, model: usedModel }
+          ]
+        }).catch(() => {});
+      }
+
+      // If projectId present, store verified research sources & claims into ProjectMemory
+      if (projectId && liveResearchData?.sources?.length) {
+        await prisma.projectMemory.create({
+          data: {
+            projectId,
+            type: 'source',
+            title: `Research: ${userPrompt.slice(0, 50)}`,
+            content: (streamedText || '').slice(0, 1000),
+            category: 'competitor_research',
+            confidence: 'high'
+          }
+        }).catch(() => {});
+      }
+
       return finalOutput;
     }
 
@@ -589,6 +702,23 @@ User Request: "${userPrompt}"`;
             result: JSON.stringify(finalOutput),
             completedAt: new Date()
           }
+        }).catch(() => {});
+      }
+
+      if (sessionId) {
+        await prisma.chatSession.update({
+          where: { id: sessionId },
+          data: {
+            activeRunId: null,
+            currentMode: agentDef.id
+          }
+        }).catch(() => {});
+
+        await prisma.chatMessage.createMany({
+          data: [
+            { sessionId, role: 'user', content: userPrompt, model: null },
+            { sessionId, role: 'assistant', content: customText, model: usedCustomModel }
+          ]
         }).catch(() => {});
       }
 
@@ -806,6 +936,24 @@ ${liveResearchData.sources.map((s, i) => `[${i + 1}] ${s.title} (${s.url}): ${s.
           result: JSON.stringify(finalOutput),
           completedAt: new Date()
         }
+      }).catch(() => {});
+    }
+
+    if (sessionId) {
+      await prisma.chatSession.update({
+        where: { id: sessionId },
+        data: {
+          activeRunId: null,
+          currentMode: agentDef.id,
+          artifactState: savedDocId ? JSON.stringify({ documentId: savedDocId, title: parsedDocument.title, type: agentDef.id }) : null
+        }
+      }).catch(() => {});
+
+      await prisma.chatMessage.createMany({
+        data: [
+          { sessionId, role: 'user', content: userPrompt, model: null },
+          { sessionId, role: 'assistant', content: finalOutput.response, model: finalOutput.model }
+        ]
       }).catch(() => {});
     }
 

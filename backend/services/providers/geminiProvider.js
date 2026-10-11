@@ -1,9 +1,9 @@
 import { GoogleGenAI } from '@google/genai';
 
 export const GEMINI_MODELS = {
-  FAST: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
-  REASONING: process.env.GEMINI_REASONING_MODEL || 'gemini-3.5-flash',
-  DOCUMENT: process.env.GEMINI_DOCUMENT_MODEL || 'gemini-3.5-flash',
+  FAST: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+  REASONING: process.env.GEMINI_REASONING_MODEL || 'gemini-3.8-flash',
+  DOCUMENT: process.env.GEMINI_DOCUMENT_MODEL || 'gemini-3.8-flash',
   LITE: 'gemini-3.5-flash-lite'
 };
 
@@ -26,15 +26,16 @@ export async function chat(messages, options = {}) {
   const configured = isGeminiConfigured(apiKey);
   const model = options.model || GEMINI_MODELS.FAST;
 
+  if (options.demo || process.env.VANI_DEMO_MODE === 'true') {
+    return {
+      text: 'Demo mode active. Please configure your Gemini API Key in Settings for live reasoning.',
+      simulated: true,
+      provider: 'gemini',
+      model
+    };
+  }
+
   if (!configured) {
-    if (options.demo || process.env.VANI_DEMO_MODE === 'true') {
-      return {
-        text: 'Demo mode active. Please configure your Gemini API Key in Settings for live reasoning.',
-        simulated: true,
-        provider: 'gemini',
-        model
-      };
-    }
     const err = new Error('Gemini API is not configured. Please add your GEMINI_API_KEY in Settings.');
     err.code = 'PROVIDER_NOT_CONFIGURED';
     err.provider = 'gemini';
@@ -85,20 +86,21 @@ export async function generateStructured(prompt, options = {}) {
   const systemInstruction = options.systemPrompt || 'You are an expert Enterprise Business Analyst. Generate valid JSON matching the requested structure.';
   const model = options.model || GEMINI_MODELS.DOCUMENT;
 
+  if (options.demo || process.env.VANI_DEMO_MODE === 'true') {
+    return {
+      text: JSON.stringify({
+        title: 'Demo Document',
+        summary: 'Gemini is operating in demo mode. Configure your API key in Settings to generate custom documents.',
+        content: '# Demo Document\n\nConfigure your GEMINI_API_KEY to generate live documents.',
+        metadata: { researchUsed: false, confidence: 'medium' }
+      }),
+      simulated: true,
+      provider: 'gemini',
+      model
+    };
+  }
+
   if (!configured) {
-    if (options.demo || process.env.VANI_DEMO_MODE === 'true') {
-      return {
-        text: JSON.stringify({
-          title: 'Demo Document',
-          summary: 'Gemini is operating in demo mode. Configure your API key in Settings to generate custom documents.',
-          content: '# Demo Document\n\nConfigure your GEMINI_API_KEY to generate live documents.',
-          metadata: { researchUsed: false, confidence: 'medium' }
-        }),
-        simulated: true,
-        provider: 'gemini',
-        model
-      };
-    }
     const err = new Error('Gemini API is not configured for document generation. Please add your GEMINI_API_KEY in Settings.');
     err.code = 'PROVIDER_NOT_CONFIGURED';
     err.provider = 'gemini';
@@ -145,6 +147,17 @@ export async function streamChat(messages, options = {}, onChunk = () => {}) {
   const apiKey = options.apiKey !== undefined ? options.apiKey : (options.geminiKey !== undefined ? options.geminiKey : process.env.GEMINI_API_KEY);
   const configured = isGeminiConfigured(apiKey);
   const model = options.model || GEMINI_MODELS.FAST;
+
+  if (options.demo || process.env.VANI_DEMO_MODE === 'true') {
+    const demoChunk = 'Demo mode active. Please configure your Gemini API Key in Settings for live reasoning.';
+    onChunk(demoChunk);
+    return {
+      text: demoChunk,
+      simulated: true,
+      provider: 'gemini',
+      model
+    };
+  }
 
   if (!configured) {
     const err = new Error('Gemini API is not configured for streaming.');

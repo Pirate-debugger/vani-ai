@@ -7,6 +7,7 @@ import { decryptKey } from '../lib/crypto.js';
 import { getAIResponse } from '../services/llm.js';
 import { runAgentWorkflow, identifyAgentIntent, parseTaskCommand } from '../services/agentService.js';
 import { getAuthUser, verifyProjectOwnership, verifyTaskOwnership } from '../middleware/auth.js';
+import { parseTemporalIntent, createScheduledAction } from '../services/schedulerService.js';
 
 const router = express.Router();
 
@@ -152,16 +153,43 @@ router.post('/command', upload.single('file'), async (req, res) => {
       geminiKey: await getGeminiKey(req)
     };
 
-    // 2. Classify intent
-    const agentType = await identifyAgentIntent(transcript, apiKeys);
-    console.log(`[VoiceCommand Router] Prompt: "${transcript}" -> Agent: ${agentType}`);
-
     let documentId = null;
     let responseTasks = [];
     let spokenConfirmationText = '';
+    let scheduledAction = null;
 
-    // 3. Process based on agentType
-    if (agentType === 'task_command') {
+    // 2A. Check for Temporal Intent (e.g. "remind me tomorrow at 8 PM...", "every Monday research competitors...")
+    const userTimezone = req.body.timezone || 'Asia/Kolkata';
+    const temporal = parseTemporalIntent(transcript, userTimezone);
+
+    if (temporal.hasTemporalIntent && authUser && authUser.id) {
+      console.log(`[VoiceCommand Temporal] Detected intent: ${temporal.schedule}, Action: ${temporal.actionType}`);
+      scheduledAction = await createScheduledAction({
+        userId: authUser.id,
+        projectId: projectId || null,
+        title: temporal.title,
+        actionType: temporal.actionType,
+        payload: { prompt: temporal.prompt },
+        schedule: temporal.schedule,
+        timezone: temporal.timezone,
+        nextRunAt: temporal.nextRunAt
+      });
+
+      const tzLabel = temporal.timezone === 'Asia/Kolkata' ? 'IST' : temporal.timezone;
+      if (temporal.schedule.toLowerCase().startsWith('every')) {
+        spokenConfirmationText = `Done. I'll check it ${temporal.schedule} ${tzLabel}.`;
+      } else if (temporal.schedule.toLowerCase().startsWith('tomorrow')) {
+        spokenConfirmationText = `Done. I'll remind you ${temporal.schedule} ${tzLabel}.`;
+      } else {
+        spokenConfirmationText = `Done. I have scheduled ${temporal.title} for ${temporal.schedule}.`;
+      }
+    } else {
+      // 2B. Classify standard agent intent
+      const agentType = await identifyAgentIntent(transcript, apiKeys);
+      console.log(`[VoiceCommand Router] Prompt: "${transcript}" -> Agent: ${agentType}`);
+
+      // 3. Process based on agentType
+      if (agentType === 'task_command') {
       const existingTasks = projectId ? await prisma.task.findMany({
         where: { projectId },
         orderBy: { createdAt: 'asc' }
@@ -227,6 +255,7 @@ router.post('/command', upload.single('file'), async (req, res) => {
       });
       spokenConfirmationText = chatRes.response;
     }
+  }
 
     // 4. TTS synthesis for spoken response (short summary < 350 chars)
     let audioContent = null;
@@ -264,7 +293,8 @@ router.post('/command', upload.single('file'), async (req, res) => {
 
     return res.json({
       transcript,
-      agentType,
+      agentType: scheduledAction ? 'temporal_schedule' : (req.body.agentType || 'general'),
+      scheduledAction,
       documentId,
       tasks: responseTasks,
       reply: spokenConfirmationText,

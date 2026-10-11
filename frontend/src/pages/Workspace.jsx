@@ -45,6 +45,8 @@ import VoiceOrb from '../components/VoiceOrb';
 import DocumentViewer from '../components/DocumentViewer';
 import CommandPalette from '../components/CommandPalette';
 import CustomAgentModal from '../components/CustomAgentModal';
+import ScheduledActionCard from '../components/ScheduledActionCard';
+import EvidenceInspector from '../components/EvidenceInspector';
 
 export default function Workspace({
   currentLang,
@@ -64,6 +66,11 @@ export default function Workspace({
   const [copiedId, setCopiedId] = useState(null);
   const [showVoiceOrb, setShowVoiceOrb] = useState(false);
   const [talkMode, setTalkMode] = useState('tap'); // 'tap' | 'hold'
+
+  // Dynamic Agent Transition & Session Continuity (Chat-to-Agent Evolution)
+  const [agentTransition, setAgentTransition] = useState(null);
+  const [activeSessionId, setActiveSessionId] = useState(() => localStorage.getItem('vani_active_session_id') || '');
+  const [evidenceInspectorData, setEvidenceInspectorData] = useState(null);
 
   // Section 10: Follow-up Queue
   const [queuedInstructions, setQueuedInstructions] = useState([]);
@@ -149,6 +156,47 @@ export default function Workspace({
   useEffect(() => {
     fetchCustomAgents();
   }, []);
+
+  // Restore session state for persistent context continuity (Section 8, 10, 86)
+  useEffect(() => {
+    if (!activeSessionId) return;
+    const restoreSession = async () => {
+      try {
+        const res = await axios.get(`/api/ai/session/${activeSessionId}/state`, { withCredentials: true });
+        if (res.data?.session) {
+          const sess = res.data.session;
+          if (Array.isArray(sess.messages) && sess.messages.length > 0 && messages.length === 0) {
+            setMessages(sess.messages.map(m => ({
+              id: m.id,
+              role: m.role,
+              content: m.content,
+              timestamp: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            })));
+          }
+          if (sess.currentMode && sess.currentMode !== 'auto') {
+            setSelectedAgent(sess.currentMode);
+          }
+          if (sess.artifactState) {
+            try {
+              const parsedArtifact = typeof sess.artifactState === 'string' ? JSON.parse(sess.artifactState) : sess.artifactState;
+              setActiveDocument(parsedArtifact);
+            } catch (e) {}
+          }
+          if (sess.agentRuns?.length > 0) {
+            const latestRun = sess.agentRuns[0];
+            setActiveExecution({
+              agentId: latestRun.agentId,
+              status: latestRun.status,
+              steps: latestRun.steps || []
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[Session Restore Warn]:', err.message);
+      }
+    };
+    restoreSession();
+  }, [activeSessionId]);
 
   // Selected agent definition (supports both canonical & custom agents)
   const selectedAgentDef = useMemo(() => {
@@ -370,10 +418,12 @@ export default function Workspace({
       const payload = {
         prompt,
         messages: [...historyPayload, { role: 'user', content: prompt }],
+        sessionId: activeSessionId || undefined,
         agentType: selectedAgent !== 'auto' ? selectedAgent : undefined,
         projectId: selectedProjectId || undefined,
         language_code: currentLang || 'hi-IN',
-        personality: personality || 'respectful'
+        personality: personality || 'respectful',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata'
       };
 
       const response = await fetch('/api/ai/orchestrate-stream', {
@@ -413,8 +463,27 @@ export default function Workspace({
           try {
             const event = JSON.parse(dataStr);
 
-            // Real backend event handling
-            if (event.type === 'agent.started') {
+            // Dynamic Agent Transition & Scheduled Action handling
+            if (event.type === 'agent.transition') {
+              setAgentTransition({
+                fromMode: event.fromMode,
+                toMode: event.toMode,
+                agent: event.agent,
+                reason: event.reason,
+                capabilities: event.capabilities
+              });
+              setTimeout(() => setAgentTransition(null), 6000);
+            } else if (event.type === 'action.scheduled') {
+              const scheduledAction = event.action;
+              setMessages(prev => prev.map(m => m.id === assistantMsgId ? {
+                ...m,
+                scheduledAction
+              } : m));
+            } else if (event.type === 'agent.started') {
+              if (event.sessionId) {
+                setActiveSessionId(event.sessionId);
+                localStorage.setItem('vani_active_session_id', event.sessionId);
+              }
               currentExecution = {
                 agentId: event.agent,
                 agentName: event.name || event.agentName,
@@ -484,6 +553,16 @@ export default function Workspace({
               }
             } else if (event.type === 'final.result') {
               finalResultPayload = event.result;
+              if (event.sessionId) {
+                setActiveSessionId(event.sessionId);
+                localStorage.setItem('vani_active_session_id', event.sessionId);
+              }
+              if (event.result?.scheduledAction) {
+                setMessages(prev => prev.map(m => m.id === assistantMsgId ? {
+                  ...m,
+                  scheduledAction: event.result.scheduledAction
+                } : m));
+              }
             } else if (event.type === 'error') {
               streamExecutionError = event.error || event.message || 'Execution encountered an error';
               if (currentExecution) {
@@ -512,6 +591,7 @@ export default function Workspace({
             };
           }
           const finalContent = accumulatedText || finalResultPayload?.response || finalResultPayload?.text || 'Generated result ready.';
+          const scheduledAction = finalResultPayload?.scheduledAction || m.scheduledAction || null;
           return {
             ...m,
             content: finalContent,
@@ -519,6 +599,7 @@ export default function Workspace({
             documentId: finalResultPayload?.documentId || currentExecution?.documentId || null,
             documentTitle: finalResultPayload?.documentTitle || currentExecution?.documentTitle || null,
             tasks: finalResultPayload?.tasks || [],
+            scheduledAction,
             isStreaming: false
           };
         }
@@ -844,8 +925,29 @@ export default function Workspace({
 
               </div>
             ) : (
-              /* ── Conversation Message Bubbles ─────────────────────────── */
-              messages.map(msg => (
+              <>
+                {/* Dynamic Agent Transition Notice (Section 6 & 34) */}
+                {agentTransition && (
+                  <div className="mx-2 mb-3 p-3 rounded-2xl bg-[#0F0C1E] border border-cyan-500/30 text-xs shadow-lg animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                        <span className="font-bold text-white tracking-wide">
+                          ✦ Vani switched to {agentTransition.agent ? agentTransition.agent.toUpperCase() : 'Specialized Agent'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-cyan-400/80 font-mono uppercase bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-500/20">
+                        Auto Transition
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-white/70 mt-1 pl-4">
+                      {agentTransition.reason || 'Live capabilities activated for this request.'}
+                    </p>
+                  </div>
+                )}
+
+                {/* ── Conversation Message Bubbles ─────────────────────────── */}
+                {messages.map(msg => (
                 <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                   <div className={`max-w-[92%] sm:max-w-[85%] rounded-2xl p-4 shadow-lg text-sm leading-relaxed ${
                     msg.role === 'user' 
@@ -867,6 +969,20 @@ export default function Workspace({
                         execution={msg.agentExecution} 
                         onStop={handleStopExecution}
                         onRetry={handleRetryExecution}
+                        onInspectEvidence={(data) => setEvidenceInspectorData(data)}
+                      />
+                    )}
+
+                    {/* Inline Scheduled Action Card (Section 18, 24) */}
+                    {msg.scheduledAction && (
+                      <ScheduledActionCard
+                        action={msg.scheduledAction}
+                        onActionUpdated={(updated) => {
+                          setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, scheduledAction: updated } : m));
+                        }}
+                        onActionDeleted={() => {
+                          setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, scheduledAction: null } : m));
+                        }}
                       />
                     )}
 
@@ -919,9 +1035,10 @@ export default function Workspace({
                     )}
                   </div>
                 </div>
-              ))
-            )}
-            <div ref={chatEndRef} />
+              ))}
+            </>
+          )}
+          <div ref={chatEndRef} />
           </div>
 
           {/* ── Follow-Up Queue Floating Bar (Section 10) ──────────────────── */}
@@ -1248,6 +1365,14 @@ export default function Workspace({
           fetchCustomAgents();
           handleSelectAgent(`custom_${newAgent.id}`);
         }}
+      />
+
+      {/* ── Evidence Inspector Modal (Section 80) ─────────────────────────── */}
+      <EvidenceInspector
+        isOpen={Boolean(evidenceInspectorData)}
+        sources={evidenceInspectorData?.sources || []}
+        claims={evidenceInspectorData?.claims || []}
+        onClose={() => setEvidenceInspectorData(null)}
       />
     </div>
   );

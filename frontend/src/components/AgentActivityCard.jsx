@@ -63,7 +63,7 @@ const AGENT_CONFIGS = {
   }
 };
 
-export default function AgentActivityCard({ execution, isLive = false, onStop, onRetry }) {
+export default function AgentActivityCard({ execution, isLive = false, onStop, onRetry, onInspectEvidence }) {
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [transparencyOpen, setTransparencyOpen] = useState(false);
 
@@ -317,22 +317,40 @@ export default function AgentActivityCard({ execution, isLive = false, onStop, o
               {sources.length} Live Sources
             </span>
           )}
+          {(sources.length > 0 || execution.claims?.length > 0) && onInspectEvidence && (
+            <button
+              onClick={() => onInspectEvidence({ sources, claims: execution.claims || [] })}
+              className="inline-flex items-center gap-1 text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-md hover:bg-emerald-500/20 transition-all font-semibold ml-auto"
+              title="Inspect verified claims, evidence citations, and freshness"
+            >
+              <ShieldCheck size={12} />
+              Inspect Evidence
+            </button>
+          )}
         </div>
       )}
 
       {/* Live Sources Accordion */}
       {sources.length > 0 && (
         <div className="border-t border-white/[0.06]">
-          <button
-            onClick={() => setSourcesOpen(!sourcesOpen)}
-            className="w-full px-4 py-2 text-xs flex items-center justify-between text-white/70 hover:text-white hover:bg-white/[0.02] transition-colors"
-          >
-            <span className="inline-flex items-center gap-1.5 font-medium">
+          <div className="flex items-center justify-between px-4 py-2 hover:bg-white/[0.02] transition-colors">
+            <button
+              onClick={() => setSourcesOpen(!sourcesOpen)}
+              className="text-xs flex items-center gap-1.5 text-white/70 hover:text-white"
+            >
               <Search size={12} className="text-cyan-400" />
-              Verified Web Sources ({sources.length})
-            </span>
-            {sourcesOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </button>
+              <span className="font-medium">Verified Web Sources ({sources.length})</span>
+              {sourcesOpen ? <ChevronUp size={14} className="ml-1" /> : <ChevronDown size={14} className="ml-1" />}
+            </button>
+            {onInspectEvidence && (
+              <button
+                onClick={() => onInspectEvidence({ sources, claims: execution.claims || [] })}
+                className="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1"
+              >
+                <ShieldCheck size={11} /> Audit Evidence
+              </button>
+            )}
+          </div>
 
           {sourcesOpen && (
             <div className="px-4 pb-3 pt-1 space-y-2 max-h-56 overflow-y-auto">

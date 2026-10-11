@@ -66,7 +66,7 @@ setInterval(cleanupIdempotency, 60000);
  */
 router.post('/chat', async (req, res) => {
   try {
-    const { prompt, messages, language_code, personality, profile, projectId, agentType, requestId } = req.body;
+    const { prompt, messages, language_code, personality, profile, projectId, agentType, requestId, sessionId, timeContext } = req.body;
     const userPrompt = prompt || (messages?.length ? messages[messages.length - 1].content : '');
 
     // Idempotency check: if requestId already processed recently, return cached response
@@ -108,6 +108,9 @@ router.post('/chat', async (req, res) => {
       agentType,
       projectId,
       userId: authUser?.id || null,
+      sessionId: sessionId || null,
+      timeContext: timeContext || null,
+      requestId,
       languageCode: language_code || 'hi-IN',
       personality,
       profile,
@@ -156,7 +159,7 @@ router.post('/orchestrate-stream', async (req, res) => {
   };
 
   try {
-    const { prompt, messages, agentType, projectId, language_code, personality, profile, requestId } = req.body;
+    const { prompt, messages, agentType, projectId, language_code, personality, profile, requestId, sessionId, timeContext } = req.body;
     const userPrompt = prompt || (messages?.length ? messages[messages.length - 1].content : '');
 
     // Duplicate execution protection (Section 77)
@@ -196,6 +199,8 @@ router.post('/orchestrate-stream', async (req, res) => {
       agentType,
       projectId,
       userId: authUser?.id || null,
+      sessionId: sessionId || null,
+      timeContext: timeContext || null,
       requestId,
       languageCode: language_code || 'hi-IN',
       personality,
@@ -257,6 +262,87 @@ router.post('/chat-stream', async (req, res) => {
     console.error('[Stream] Fatal error:', error.message);
     res.write(`data: ${JSON.stringify({ error: 'Streaming response failed' })}\n\n`);
     res.end();
+  }
+});
+
+/**
+ * GET /api/ai/session/:sessionId/state
+ * Retrieves comprehensive canonical session state for session resume and continuity
+ */
+router.get('/session/:sessionId/state', async (req, res) => {
+  try {
+    const authUser = getAuthUser(req);
+    const { sessionId } = req.params;
+
+    const session = await prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        messages: {
+          orderBy: { createdAt: 'asc' }
+        },
+        project: {
+          include: {
+            memories: true,
+            tasks: { take: 20, orderBy: { createdAt: 'desc' } }
+          }
+        },
+        scheduledActions: {
+          orderBy: { createdAt: 'desc' }
+        }
+      }
+    });
+
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    if (authUser?.id && session.userId !== authUser.id) {
+      return res.status(403).json({ error: 'Forbidden: Access denied to this session' });
+    }
+
+    const latestRun = await prisma.agentRun.findFirst({
+      where: { sessionId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        steps: true,
+        toolExecutions: true
+      }
+    });
+
+    let activeDoc = null;
+    if (session.artifactState) {
+      try {
+        const parsed = JSON.parse(session.artifactState);
+        if (parsed.documentId) {
+          activeDoc = await prisma.document.findUnique({
+            where: { id: parsed.documentId },
+            include: { versions: true }
+          });
+        }
+      } catch {}
+    }
+
+    res.json({
+      success: true,
+      session: {
+        id: session.id,
+        title: session.title,
+        lang: session.lang,
+        currentMode: session.currentMode,
+        activeRunId: session.activeRunId,
+        artifactState: session.artifactState,
+        timeContext: session.timeContext,
+        projectId: session.projectId,
+        messages: session.messages,
+        scheduledActions: session.scheduledActions,
+        project: session.project
+      },
+      latestRun,
+      activeDocument: activeDoc
+    });
+  } catch (err) {
+    console.error('[AI API] Session state error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

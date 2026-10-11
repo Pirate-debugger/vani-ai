@@ -24,19 +24,26 @@ model User {
   projects     Project[]
   customAgents CustomAgent[]
   agentRuns    AgentRun[]
+  scheduledActions ScheduledAction[]
 }
 
 model ChatSession {
   id        String        @id @default(cuid())
   userId    String
   user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title     String        @default("New Chat")
-  lang      String        @default("hi-IN")
-  agentType String        @default("voice_assistant")
-  projectId String?
-  project   Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  createdAt DateTime      @default(now())
-  messages  ChatMessage[]
+  title        String        @default("New Chat")
+  lang         String        @default("hi-IN")
+  agentType    String        @default("voice_assistant")
+  currentMode  String        @default("auto")
+  activeRunId  String?
+  artifactState String?
+  timeContext  String?
+  projectId    String?
+  project      Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt    DateTime      @default(now())
+  messages     ChatMessage[]
+  agentRuns    AgentRun[]
+  scheduledActions ScheduledAction[]
 }
 
 model ChatMessage {
@@ -86,6 +93,7 @@ model Project {
   tasks       Task[]
   agentRuns   AgentRun[]
   memories    ProjectMemory[]
+  scheduledActions ScheduledAction[]
 }
 
 model Document {
@@ -156,6 +164,8 @@ model AgentRun {
   user           User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
   projectId      String?
   project        Project?        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sessionId      String?
+  session        ChatSession?    @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   requestId      String?         @unique
   agentId        String
   mode           String          @default("auto")
@@ -215,4 +225,24 @@ model ProjectMemory {
   updatedAt   DateTime @updatedAt
 }
 
-
+model ScheduledAction {
+  id          String       @id @default(cuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sessionId   String?
+  session     ChatSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  title       String
+  actionType  String       // 'research' | 'reminder' | 'brd' | 'task_sync' | 'custom'
+  payload     String       // JSON string { prompt, agentType, params, target }
+  schedule    String       // e.g. "Every Monday at 8:00 AM" or cron or iso string
+  timezone    String       @default("Asia/Kolkata")
+  status      String       @default("scheduled") // scheduled, queued, running, completed, failed, paused, cancelled
+  nextRunAt   DateTime
+  lastRunAt   DateTime?
+  lastResult  String?      // JSON string
+  retryCount  Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}

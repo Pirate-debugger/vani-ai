@@ -151,8 +151,8 @@ export const callGeminiLLM = async (messages, prompt, langCode, personality, pro
   }
 
   // Model fallback list with modern active models
-  const configuredModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
-  const models = Array.from(new Set([configuredModel, 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.8-flash']));
+  const configuredModel = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+  const models = Array.from(new Set([configuredModel, 'gemini-3.8-flash', 'gemini-3.5-flash-lite']));
   let lastErr = null;
 
   for (const modelName of models) {
@@ -161,7 +161,7 @@ export const callGeminiLLM = async (messages, prompt, langCode, personality, pro
       const response = await axios.post(
         `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
         payload,
-        { headers: { 'Content-Type': 'application/json' }, timeout: options.timeoutMs || 40000 }
+        { headers: { 'Content-Type': 'application/json' }, timeout: options.timeoutMs || 25000 }
       );
 
       const candidate = response.data?.candidates?.[0];

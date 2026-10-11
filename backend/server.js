@@ -18,6 +18,8 @@ import projectRoutes from './routes/project.js';
 import taskRoutes from './routes/task.js';
 import integrationRoutes from './routes/integration.js';
 import customAgentRoutes from './routes/customAgent.js';
+import scheduleRoutes from './routes/schedule.js';
+import { startSchedulerDaemon } from './services/schedulerService.js';
 
 dotenv.config();
 
@@ -153,6 +155,8 @@ app.use('/api/project', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/integrations', integrationRoutes);
 app.use('/api/agents', customAgentRoutes);
+app.use('/api/schedule', scheduleRoutes);
+app.use('/api/schedules', scheduleRoutes);
 
 // Serve frontend build (production only — in dev, Vite runs separately)
 const publicDir = path.join(__dirname, 'public');
@@ -194,6 +198,7 @@ if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
     console.log(` Gemini: ${process.env.GEMINI_API_KEY ? 'Configured ✓' : 'Not configured'}`);
     console.log(` Google OAuth: ${process.env.GOOGLE_CLIENT_ID ? 'Configured ✓' : 'Not configured (local auth only)'}`);
     console.log(`=========================================`);
+    startSchedulerDaemon();
   });
 
   const handleShutdown = () => {
