@@ -232,4 +232,89 @@ router.post('/:id/tasks', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/projects/:id/memory
+// Fetch all memories and knowledge items for a project (ensures ownership)
+router.get('/:id/memory', requireAuth, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    await verifyProjectOwnership(id, req.authUser.id);
+
+    const memories = await prisma.projectMemory.findMany({
+      where: { projectId: id },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(memories);
+  } catch (error) {
+    console.error('Error fetching project memory:', error.message);
+    res.status(error.status || 500).json({
+      error: error.message || 'Failed to fetch project memory',
+      code: error.code || 'MEMORY_FETCH_FAILED'
+    });
+  }
+});
+
+// POST /api/projects/:id/memory
+// Add a knowledge or decision item to project memory (ensures ownership)
+router.post('/:id/memory', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const { title, content, type = 'knowledge', category } = req.body;
+
+  if (!title || !title.trim() || !content || !content.trim()) {
+    return res.status(400).json({ error: 'Title and content are required', code: 'INVALID_INPUT' });
+  }
+
+  try {
+    await verifyProjectOwnership(id, req.authUser.id);
+
+    const validTypes = ['decision', 'open_question', 'knowledge', 'source'];
+    const resolvedType = validTypes.includes(type) ? type : 'knowledge';
+
+    const memory = await prisma.projectMemory.create({
+      data: {
+        projectId: id,
+        title: title.trim(),
+        content: content.trim(),
+        type: resolvedType,
+        category: category ? category.trim() : null
+      }
+    });
+
+    res.status(201).json(memory);
+  } catch (error) {
+    console.error('Error adding project memory:', error.message);
+    res.status(error.status || 500).json({
+      error: error.message || 'Failed to add project memory',
+      code: error.code || 'MEMORY_CREATE_FAILED'
+    });
+  }
+});
+
+// DELETE /api/projects/:id/memory/:memoryId
+// Delete a specific memory item (ensures project ownership)
+router.delete('/:id/memory/:memoryId', requireAuth, async (req, res) => {
+  const { id, memoryId } = req.params;
+
+  try {
+    await verifyProjectOwnership(id, req.authUser.id);
+
+    const existing = await prisma.projectMemory.findFirst({
+      where: { id: memoryId, projectId: id }
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Memory item not found', code: 'NOT_FOUND' });
+    }
+
+    await prisma.projectMemory.delete({ where: { id: memoryId } });
+    res.json({ success: true, message: 'Memory item deleted' });
+  } catch (error) {
+    console.error('Error deleting project memory:', error.message);
+    res.status(error.status || 500).json({
+      error: error.message || 'Failed to delete project memory',
+      code: error.code || 'MEMORY_DELETE_FAILED'
+    });
+  }
+});
+
 export default router;

@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import {
   Home, MessageSquare, Mic, Settings, Menu, X, Globe, Radio,
   LogOut, User, Plus, Trash2, ChevronDown, ChevronRight, Clock, CheckCircle2,
-  Folder, FileText, Sparkles, Check, Layers
+  Folder, FileText, Sparkles, Check, Layers, CheckSquare, Compass, Calendar, ArrowRight
 } from 'lucide-react';
 import { useChatHistory } from '../context/ChatHistoryContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { CANONICAL_AGENTS } from '../config/canonicalAgents';
 import axios from 'axios';
+
+const FAVORITE_AGENT_IDS = ['auto', 'research', 'brd', 'build'];
 
 const LANGUAGES = [
   { code: 'hi-IN', label: 'हिन्दी', sub: 'Hindi' },
@@ -65,7 +67,9 @@ export default function Sidebar({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(true);
+  const [workOpen, setWorkOpen] = useState(true);
   const [agentsOpen, setAgentsOpen] = useState(true);
+  const [allAgentsModalOpen, setAllAgentsModalOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
 
   const [internalProjects, setInternalProjects] = useState([]);
@@ -344,8 +348,86 @@ export default function Sidebar({
             </div>
           )}
 
-          {/* ── Section: Specialized Agents ────────────────────────────────── */}
-          {!collapsed && (
+          {/* ── Section: Work (Documents, Tasks, Research, Scheduled Actions) ── */}
+          {!collapsed ? (
+            <div className="space-y-1">
+              <button
+                onClick={() => setWorkOpen(!workOpen)}
+                className="w-full flex items-center justify-between px-2 py-1.5 text-white/40 hover:text-white/70 transition-colors text-[11px] font-bold uppercase tracking-wider"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Layers size={12} className="text-indigo-400" />
+                  <span>Work</span>
+                </div>
+                {workOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              </button>
+
+              {workOpen && (
+                <div className="space-y-0.5 pl-1">
+                  <button
+                    onClick={() => navigate('/dashboard?tab=documents')}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-2 ${
+                      location.pathname === '/dashboard' && location.search.includes('tab=documents')
+                        ? 'bg-indigo-500/15 text-indigo-300 font-bold border border-indigo-500/30'
+                        : 'text-white/60 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <FileText size={12} className="text-cyan-400" />
+                    <span>Documents</span>
+                  </button>
+
+                  <button
+                    onClick={() => navigate('/dashboard?tab=tasks')}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-2 ${
+                      location.pathname === '/dashboard' && location.search.includes('tab=tasks')
+                        ? 'bg-emerald-500/15 text-emerald-300 font-bold border border-emerald-500/30'
+                        : 'text-white/60 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <CheckSquare size={12} className="text-emerald-400" />
+                    <span>Tasks</span>
+                  </button>
+
+                  <button
+                    onClick={() => navigate('/dashboard?tab=research')}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-2 ${
+                      location.pathname === '/dashboard' && location.search.includes('tab=research')
+                        ? 'bg-cyan-500/15 text-cyan-300 font-bold border border-cyan-500/30'
+                        : 'text-white/60 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <Globe size={12} className="text-indigo-400" />
+                    <span>Research</span>
+                  </button>
+
+                  <button
+                    onClick={() => navigate('/dashboard?tab=scheduled')}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-2 ${
+                      location.pathname === '/dashboard' && location.search.includes('tab=scheduled')
+                        ? 'bg-amber-500/15 text-amber-300 font-bold border border-amber-500/30'
+                        : 'text-white/60 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <Calendar size={12} className="text-amber-400" />
+                    <span>Scheduled Actions</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="w-full p-2 flex items-center justify-center rounded-xl text-white/50 hover:text-white hover:bg-white/5"
+                title="Work: Documents, Tasks & Research"
+              >
+                <Layers size={16} />
+              </button>
+            </div>
+          )}
+
+          {/* ── Section: Agents (Auto + Favorites + Picker Trigger) ────────── */}
+          {!collapsed ? (
             <div className="space-y-1">
               <button
                 onClick={() => setAgentsOpen(!agentsOpen)}
@@ -360,45 +442,55 @@ export default function Sidebar({
 
               {agentsOpen && (
                 <div className="space-y-0.5 pl-1">
-                  {CANONICAL_AGENTS.slice(0, 8).map(agent => (
+                  {CANONICAL_AGENTS.filter(a => FAVORITE_AGENT_IDS.includes(a.id)).map(agent => (
                     <button
                       key={agent.id}
                       onClick={() => handleAgentClick(agent)}
-                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-2 ${
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all flex items-center justify-between ${
                         activeAgentId === agent.id
                           ? 'bg-emerald-500/15 text-emerald-300 font-bold border border-emerald-500/30'
                           : 'text-white/60 hover:text-white hover:bg-white/5'
                       }`}
                     >
-                      <span className="text-xs leading-none">{agent.icon}</span>
-                      <span className="truncate">{agent.name}</span>
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="text-xs leading-none">{agent.icon}</span>
+                        <span className="truncate">{agent.name}</span>
+                      </div>
+                      {activeAgentId === agent.id && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                      )}
                     </button>
                   ))}
+
+                  <button
+                    onClick={() => setAllAgentsModalOpen(true)}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-emerald-400 hover:bg-emerald-500/10 transition-all flex items-center gap-1.5 mt-1"
+                  >
+                    <Plus size={11} /> All Agents ({CANONICAL_AGENTS.length})
+                  </button>
                 </div>
               )}
             </div>
+          ) : (
+            <button
+              onClick={() => setAllAgentsModalOpen(true)}
+              className="w-full p-2 flex items-center justify-center rounded-xl text-white/50 hover:text-white hover:bg-white/5"
+              title="All Agents"
+            >
+              <Sparkles size={16} />
+            </button>
           )}
 
-          {/* ── Standard Navigation Links ─────────────────────────────────── */}
-          <div className="border-t border-white/5 pt-2 space-y-0.5">
-            <button
-              onClick={() => navigate('/dashboard')}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold transition-all ${
-                location.pathname === '/dashboard' ? 'bg-white/10 text-white' : 'text-white/50 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <Layers size={14} className="text-indigo-400" />
-              {!collapsed && <span>Documents & Tasks</span>}
-            </button>
-
+          {/* ── Settings ───────────────────────────────────────────────────── */}
+          <div className="border-t border-white/5 pt-2">
             <button
               onClick={() => navigate('/settings')}
               className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold transition-all ${
                 location.pathname === '/settings' ? 'bg-white/10 text-white' : 'text-white/50 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Settings size={14} className="text-cyber-cyan" />
-              {!collapsed && <span>Settings & API Keys</span>}
+              <Settings size={14} className="text-cyan-400 shrink-0" />
+              {!collapsed && <span>Settings</span>}
             </button>
           </div>
         </div>
@@ -490,6 +582,41 @@ export default function Sidebar({
             <Plus size={14} /> New Conversation
           </button>
 
+          {/* Mobile Work Section */}
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold uppercase text-white/40 tracking-wider">Work</span>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                onClick={() => { navigate('/dashboard?tab=documents'); setMobileOpen(false); }}
+                className="p-2 rounded-lg bg-white/5 text-white/80 hover:text-white text-xs flex items-center gap-1.5 text-left"
+              >
+                <FileText size={12} className="text-cyan-400" />
+                <span>Documents</span>
+              </button>
+              <button
+                onClick={() => { navigate('/dashboard?tab=tasks'); setMobileOpen(false); }}
+                className="p-2 rounded-lg bg-white/5 text-white/80 hover:text-white text-xs flex items-center gap-1.5 text-left"
+              >
+                <CheckSquare size={12} className="text-emerald-400" />
+                <span>Tasks</span>
+              </button>
+              <button
+                onClick={() => { navigate('/dashboard?tab=research'); setMobileOpen(false); }}
+                className="p-2 rounded-lg bg-white/5 text-white/80 hover:text-white text-xs flex items-center gap-1.5 text-left"
+              >
+                <Globe size={12} className="text-indigo-400" />
+                <span>Research</span>
+              </button>
+              <button
+                onClick={() => { navigate('/dashboard?tab=scheduled'); setMobileOpen(false); }}
+                className="p-2 rounded-lg bg-white/5 text-white/80 hover:text-white text-xs flex items-center gap-1.5 text-left"
+              >
+                <Calendar size={12} className="text-amber-400" />
+                <span>Schedule</span>
+              </button>
+            </div>
+          </div>
+
           <div className="space-y-1">
             <span className="text-[10px] font-bold uppercase text-white/40 tracking-wider">Projects</span>
             {displayProjects.map(proj => (
@@ -497,7 +624,7 @@ export default function Sidebar({
                 key={proj.id}
                 onClick={() => handleProjectClick(proj)}
                 className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs ${
-                  activeProjectId === proj.id ? 'bg-cyber-cyan/20 text-cyber-cyan font-bold' : 'text-white/70 hover:bg-white/5'
+                  activeProjectId === proj.id ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'text-white/70 hover:bg-white/5'
                 }`}
               >
                 {proj.name}
@@ -507,7 +634,7 @@ export default function Sidebar({
 
           <div className="space-y-1">
             <span className="text-[10px] font-bold uppercase text-white/40 tracking-wider">Agents</span>
-            {CANONICAL_AGENTS.slice(0, 7).map(agent => (
+            {CANONICAL_AGENTS.filter(a => FAVORITE_AGENT_IDS.includes(a.id)).map(agent => (
               <button
                 key={agent.id}
                 onClick={() => handleAgentClick(agent)}
@@ -517,9 +644,76 @@ export default function Sidebar({
                 <span>{agent.name}</span>
               </button>
             ))}
+            <button
+              onClick={() => { setMobileOpen(false); setAllAgentsModalOpen(true); }}
+              className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-emerald-400 font-bold hover:bg-emerald-500/10 flex items-center gap-1.5"
+            >
+              <Plus size={12} /> All Agents ({CANONICAL_AGENTS.length})
+            </button>
           </div>
         </div>
       </aside>
+
+      {/* ── All Agents Modal Picker ────────────────────────────────────────── */}
+      {allAgentsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+          <div className="w-full max-w-2xl bg-[#0F172A] border border-white/10 rounded-2xl shadow-2xl p-6 overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between pb-4 border-b border-white/10 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <Sparkles size={16} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Agent Directory</h3>
+                  <p className="text-xs text-slate-400">Choose a specialized AI agent for your current objective</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setAllAgentsModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto py-4 space-y-2.5 custom-scrollbar pr-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {CANONICAL_AGENTS.map(agent => (
+                  <button
+                    key={agent.id}
+                    onClick={() => {
+                      handleAgentClick(agent);
+                      setAllAgentsModalOpen(false);
+                    }}
+                    className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between group ${
+                      activeAgentId === agent.id
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                        : 'bg-white/[0.03] border-white/10 hover:border-emerald-500/30 hover:bg-white/[0.06] text-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base leading-none">{agent.icon}</span>
+                        <span className="font-bold text-xs text-white group-hover:text-emerald-300 transition-colors">{agent.name}</span>
+                      </div>
+                      {activeAgentId === agent.id && (
+                        <span className="text-[10px] font-bold uppercase text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full">Active</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
+                      {agent.description}
+                    </p>
+                    <div className="mt-2.5 pt-2 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                      <span>Provider: {agent.preferredProvider || 'auto'}</span>
+                      <span className="text-emerald-400 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5 font-sans font-semibold">Select →</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

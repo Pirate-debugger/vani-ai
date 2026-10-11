@@ -170,27 +170,54 @@ router.post('/local-login', async (req, res) => {
     const { email, name, isGuest } = req.body;
     if (!email && !isGuest) return res.status(400).json({ error: 'Email required' });
 
-    const userId = isGuest
-      ? 'guest_user'
-      : (email ? email.toLowerCase().replace(/[^a-zA-Z0-9_]/g, '_') : 'local_user');
-    const userEmail = isGuest ? 'guest@vani.ai' : (email ? email.toLowerCase() : 'user@local.ai');
-    const userName = name || (isGuest ? 'Guest User' : userEmail.split('@')[0]);
+    let finalId;
+    let userEmail;
+    let userName;
 
-    let finalId = userId;
-    if (prisma?.user?.upsert) {
+    if (isGuest) {
+      // If the current session already has an isolated guest ID, reuse it
+      if (req.session?.localUser?.isGuest && req.session?.localUser?.id) {
+        finalId = req.session.localUser.id;
+        userEmail = req.session.localUser.email;
+        userName = name || req.session.localUser.name || 'Guest User';
+      } else {
+        const guestHex = crypto.randomBytes(6).toString('hex');
+        finalId = `guest_${Date.now()}_${guestHex}`;
+        userEmail = `${finalId}@guest.vani.ai`;
+        userName = name || 'Guest User';
+
+        try {
+          await prisma.user.create({
+            data: {
+              id: finalId,
+              email: userEmail,
+              name: userName,
+              passwordHash: 'guest_ephemeral'
+            }
+          });
+        } catch (dbErr) {
+          console.warn('[Auth Local Login] Guest user create warn:', dbErr.message);
+        }
+      }
+    } else {
+      userEmail = email.toLowerCase().trim();
+      userName = name?.trim() || userEmail.split('@')[0];
+
       try {
-        const dbUser = await prisma.user.upsert({
-          where: { email: userEmail },
-          update: { name: userName },
-          create: {
-            id: userId,
-            email: userEmail,
-            name: userName
-          }
-        });
-        if (dbUser?.id) finalId = dbUser.id;
+        let dbUser = await prisma.user.findUnique({ where: { email: userEmail } });
+        if (!dbUser) {
+          dbUser = await prisma.user.create({
+            data: {
+              email: userEmail,
+              name: userName,
+              passwordHash: 'local_legacy'
+            }
+          });
+        }
+        finalId = dbUser.id;
       } catch (dbErr) {
-        console.warn('[Auth Local Login] DB user upsert warn:', dbErr.message);
+        console.warn('[Auth Local Login] User fetch/create warn:', dbErr.message);
+        finalId = userEmail.replace(/[^a-zA-Z0-9_]/g, '_');
       }
     }
 

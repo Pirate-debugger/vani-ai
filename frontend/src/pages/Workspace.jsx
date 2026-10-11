@@ -103,6 +103,31 @@ export default function Workspace({
   const dropdownRef = useRef(null);
   const projectDropdownRef = useRef(null);
   const inputRef = useRef(null);
+  const textareaRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const [attachedFile, setAttachedFile] = useState(null);
+
+  const adjustTextareaHeight = (element) => {
+    if (!element) return;
+    element.style.height = 'auto';
+    element.style.height = `${Math.min(Math.max(element.scrollHeight, 44), 160)}px`;
+  };
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setAttachedFile({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        content: event.target?.result || ''
+      });
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
 
   const {
     isRecording,
@@ -364,8 +389,17 @@ export default function Workspace({
 
   // ─── Real SSE Streaming Execution ──────────────────────────────────────────
   const submitStreamMessage = async (queryText) => {
-    const prompt = queryText.trim();
-    if (!prompt) return;
+    let prompt = queryText.trim();
+    if (!prompt && !attachedFile) return;
+
+    if (attachedFile) {
+      prompt = `${prompt ? prompt + '\n\n' : ''}[Attached File: ${attachedFile.name}]\n${attachedFile.content}`.trim();
+      setAttachedFile(null);
+    }
+
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
 
     // Section 10: If already streaming, add to queued instructions!
     if (isStreaming) {
@@ -692,13 +726,13 @@ export default function Workspace({
               onClick={() => setProjectDropdownOpen(!projectDropdownOpen)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-xs font-semibold text-white transition-all shadow-sm max-w-[200px] truncate"
             >
-              <span className="w-2 h-2 rounded-full bg-cyber-cyan shrink-0 animate-pulse" />
-              <span className="truncate">{activeProject ? activeProject.name : 'Select Project'}</span>
+              <span className={`w-2 h-2 rounded-full shrink-0 ${activeProject ? 'bg-cyan-400' : 'bg-slate-500'}`} />
+              <span className="truncate">{activeProject ? activeProject.name : 'No Project Selected'}</span>
               <ChevronDown size={13} className="text-white/40 shrink-0 ml-1" />
             </button>
 
             {projectDropdownOpen && (
-              <div className="absolute left-0 mt-2 w-64 rounded-2xl bg-[#0F0C1E] border border-white/10 shadow-2xl p-2 z-50 text-xs animate-in fade-in zoom-in-95">
+              <div className="absolute left-0 mt-2 w-64 rounded-2xl bg-[#0F172A] border border-white/10 shadow-2xl p-2 z-50 text-xs animate-in fade-in zoom-in-95">
                 <div className="text-[10px] font-bold text-white/40 uppercase tracking-wider px-2 py-1">
                   Active Projects
                 </div>
@@ -708,18 +742,18 @@ export default function Workspace({
                       key={p.id}
                       onClick={() => handleSelectProject(p.id)}
                       className={`w-full text-left p-2 rounded-xl flex items-center justify-between transition-all ${
-                        selectedProjectId === p.id ? 'bg-cyber-cyan/15 text-cyber-cyan font-bold' : 'hover:bg-white/5 text-white/80'
+                        selectedProjectId === p.id ? 'bg-cyan-500/15 text-cyan-300 font-bold' : 'hover:bg-white/5 text-white/80'
                       }`}
                     >
                       <span className="truncate">{p.name}</span>
-                      {selectedProjectId === p.id && <Check size={13} className="text-cyber-cyan shrink-0" />}
+                      {selectedProjectId === p.id && <Check size={13} className="text-cyan-400 shrink-0" />}
                     </button>
                   ))}
                 </div>
                 <div className="border-t border-white/10 pt-1 mt-1">
                   <button
                     onClick={() => { setProjectDropdownOpen(false); setShowNewProjectModal(true); }}
-                    className="w-full text-left p-2 rounded-xl text-cyber-purple hover:bg-cyber-purple/10 font-bold flex items-center gap-1.5 transition-colors"
+                    className="w-full text-left p-2 rounded-xl text-cyan-400 hover:bg-cyan-500/10 font-bold flex items-center gap-1.5 transition-colors"
                   >
                     <Plus size={13} /> Create New Project
                   </button>
@@ -728,26 +762,41 @@ export default function Workspace({
             )}
           </div>
 
-          {/* Context Metrics Badges (Section 24) */}
+          {/* Context Metrics Badges: Suppress zero metrics if no project selected */}
           <div className="hidden lg:flex items-center gap-2 text-xs text-white/50 pl-2 border-l border-white/10">
-            <span className="flex items-center gap-1">
-              <FileText size={12} className="text-white/40" />
-              <span><strong className="text-white">{activeProjectDocCount}</strong> Docs</span>
-            </span>
-            <span className="text-white/20">•</span>
-            <span className="flex items-center gap-1">
-              <Globe size={12} className="text-cyber-cyan" />
-              <span><strong className="text-white">{activeDocument?.metadata?.sources?.length || 0}</strong> Research</span>
-            </span>
-            <span className="text-white/20">•</span>
-            <span className="flex items-center gap-1">
-              <CheckSquare size={12} className="text-emerald-400" />
-              <span><strong className="text-white">{activeProjectTaskCount}</strong> Tasks</span>
-            </span>
-            <span className="text-white/20">•</span>
-            <span className="px-2 py-0.5 rounded-full bg-white/5 text-[10px] uppercase font-bold text-white/60">
-              Active: {activeDocument ? activeDocument.type.toUpperCase() : selectedAgent.toUpperCase()}
-            </span>
+            {activeProject ? (
+              <>
+                <span className="flex items-center gap-1">
+                  <FileText size={12} className="text-white/40" />
+                  <span><strong className="text-white">{activeProjectDocCount}</strong> Docs</span>
+                </span>
+                <span className="text-white/20">•</span>
+                <span className="flex items-center gap-1">
+                  <Globe size={12} className="text-cyan-400" />
+                  <span><strong className="text-white">{activeDocument?.metadata?.sources?.length || 0}</strong> Research</span>
+                </span>
+                <span className="text-white/20">•</span>
+                <span className="flex items-center gap-1">
+                  <CheckSquare size={12} className="text-emerald-400" />
+                  <span><strong className="text-white">{activeProjectTaskCount}</strong> Tasks</span>
+                </span>
+              </>
+            ) : (
+              <span className="text-xs text-slate-400 italic">
+                General Workspace (No project context)
+              </span>
+            )}
+
+            {/* Run Status Indicator */}
+            {(isStreaming || activeExecution) && (
+              <>
+                <span className="text-white/20">•</span>
+                <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] uppercase font-bold flex items-center gap-1 border border-cyan-500/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                  <span>{isStreaming ? 'Executing...' : activeExecution?.status || 'Active'}</span>
+                </span>
+              </>
+            )}
           </div>
         </div>
 
@@ -862,66 +911,97 @@ export default function Workspace({
           {/* Scrollable Conversation Stream */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar">
             {messages.length === 0 ? (
-              /* ── Default Home / Minimal General Chat (Section 2) ────────── */
-              <div className="flex flex-col items-center justify-center min-h-full text-center max-w-xl mx-auto py-10">
+              /* ── Default Home / Minimal General Chat (Section 10) ────────── */
+              <div className="flex flex-col items-center justify-center min-h-[70vh] text-center max-w-2xl mx-auto py-8 px-4">
                 
                 {/* Greeting & Subtitle */}
-                <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-white via-white/95 to-cyber-cyan bg-clip-text text-transparent">
+                <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
                   {greeting}
                 </h1>
-                <p className="text-sm text-white/60 mt-2 font-medium">
-                  How can I help you today?
+                <p className="text-sm text-slate-400 mt-2 font-medium max-w-md">
+                  India-first, multilingual, voice-first AI work copilot. Speak or type in Hindi, Hinglish, or English.
                 </p>
 
-                {/* Interactive Suggestion Pills (Section 2) */}
-                <div className="flex flex-wrap items-center justify-center gap-2 mt-6 max-w-md">
-                  {[
-                    { label: 'Research', icon: '🔎', prompt: 'Research current competitors, pricing, and market demand for a PG Finder startup.' },
-                    { label: 'Create', icon: '📋', prompt: 'Create a comprehensive 29-section Enterprise BRD for my startup.' },
-                    { label: 'Analyze', icon: '📊', prompt: 'Analyze unit economics and risks for an on-demand delivery app.' },
-                    { label: 'Plan', icon: '🗺', prompt: 'Plan a phased MVP product roadmap with sprint milestones.' },
-                    { label: 'Build', icon: '⚡', prompt: 'Build an MVP plan: database schema, APIs, UI breakdown, and dev tasks.' },
-                    { label: 'Explore', icon: '💡', prompt: 'Explain recursion in C with clear examples.' }
-                  ].map((pill, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => submitStreamMessage(pill.prompt)}
-                      className="px-3.5 py-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.09] border border-white/10 hover:border-cyber-cyan/40 text-xs font-semibold text-white/80 hover:text-white transition-all flex items-center gap-1.5 shadow-sm"
-                    >
-                      <span>{pill.icon}</span>
-                      <span>{pill.label}</span>
-                    </button>
-                  ))}
+                {/* Project Context Indicator */}
+                <div className="mt-4 px-3 py-1 rounded-full bg-white/[0.04] border border-white/10 text-xs text-slate-300 flex items-center gap-2 shadow-sm">
+                  <span className={`w-2 h-2 rounded-full ${activeProject ? 'bg-cyan-400' : 'bg-slate-500'}`} />
+                  <span>{activeProject ? (
+                    <>Project: <strong className="text-white">{activeProject.name}</strong></>
+                  ) : (
+                    'General Workspace (No project selected)'
+                  )}</span>
                 </div>
 
-                {/* Hero VoiceOrb Integration (Section 2 & 3) */}
-                <div className="my-8 flex flex-col items-center">
-                  <div 
-                    onClick={isRecording ? stopRecording : () => startRecording()} 
-                    className="cursor-pointer group relative flex flex-col items-center"
-                    title="Click to speak with Vani"
+                {/* 3 Prominent Starter Action Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-8 w-full">
+                  <button
+                    onClick={() => submitStreamMessage('Namaste Vani! Explain the key benefits of using AI for everyday work in simple terms.')}
+                    className="p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 hover:border-cyan-500/40 text-left transition-all group flex flex-col justify-between shadow-sm"
                   >
-                    <VoiceOrb 
-                      voiceState={
-                        isRecording 
-                          ? 'listening' 
-                          : isSttLoading 
-                          ? 'processing' 
-                          : isStreaming 
-                          ? (activeExecution?.toolsUsed?.includes('tinyfish.search') ? 'researching' : 'thinking')
-                          : isSpeaking 
-                          ? 'speaking' 
-                          : 'idle'
-                      }
-                      analyserNode={audioAnalyser}
-                      size={190}
-                    />
-                    <div className="mt-3 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-mono uppercase tracking-wider text-white/60 group-hover:text-cyber-cyan transition-all flex items-center gap-1.5 shadow-sm">
-                      <span className={`w-2 h-2 rounded-full ${isRecording ? 'bg-rose-500 animate-ping' : isSpeaking ? 'bg-cyber-purple' : 'bg-cyber-cyan'}`} />
-                      <span>{isRecording ? 'Listening (Auto-Stop VAD)' : isSpeaking ? 'Speaking (Sarvam TTS)' : 'VoiceOrb Active · Click to Talk'}</span>
+                    <div>
+                      <div className="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mb-3">
+                        <span className="text-base">💬</span>
+                      </div>
+                      <h3 className="font-bold text-sm text-white group-hover:text-cyan-300 transition-colors">Ask Vani</h3>
+                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                        Fast everyday questions, ideas, or code in Hindi, Hinglish, or English.
+                      </p>
                     </div>
-                  </div>
+                    <span className="text-[11px] font-semibold text-cyan-400 mt-3 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                      Try now →
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => submitStreamMessage('Research current market trends, competitors, and pricing models for a student PG finder startup in India.')}
+                    className="p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 hover:border-indigo-500/40 text-left transition-all group flex flex-col justify-between shadow-sm"
+                  >
+                    <div>
+                      <div className="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mb-3">
+                        <span className="text-base">🔎</span>
+                      </div>
+                      <h3 className="font-bold text-sm text-white group-hover:text-indigo-300 transition-colors">Research Competitors</h3>
+                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                        Live web search, competitor analysis, pricing, and market demand.
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-semibold text-indigo-400 mt-3 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                      Research →
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => submitStreamMessage('Create a comprehensive 29-section Enterprise BRD for an on-demand quick-commerce service.')}
+                    className="p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 hover:border-emerald-500/40 text-left transition-all group flex flex-col justify-between shadow-sm"
+                  >
+                    <div>
+                      <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mb-3">
+                        <span className="text-base">📋</span>
+                      </div>
+                      <h3 className="font-bold text-sm text-white group-hover:text-emerald-300 transition-colors">Create a BRD</h3>
+                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                        29-section Enterprise Business Requirements Document with live evidence.
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-semibold text-emerald-400 mt-3 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                      Generate →
+                    </span>
+                  </button>
                 </div>
+
+                {/* Compact, Discoverable Voice Control */}
+                <button
+                  onClick={isRecording ? stopRecording : () => startRecording()}
+                  className={`mt-6 px-4 py-2 rounded-full border text-xs font-semibold transition-all flex items-center gap-2 shadow-sm ${
+                    isRecording 
+                      ? 'bg-rose-500/20 border-rose-500 text-rose-300 animate-pulse'
+                      : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/10 text-slate-300 hover:text-white'
+                  }`}
+                  title={isRecording ? 'Click to stop listening' : 'Click to speak with Vani'}
+                >
+                  <span className={`w-2 h-2 rounded-full ${isRecording ? 'bg-rose-500 animate-ping' : 'bg-cyan-400'}`} />
+                  <span>{isRecording ? 'Listening (Click to Stop)' : 'Voice Mode · Click to Speak'}</span>
+                </button>
 
               </div>
             ) : (
@@ -1168,19 +1248,68 @@ export default function Workspace({
               </div>
             </div>
 
+            {/* Attached file preview chip */}
+            {attachedFile && (
+              <div className="mb-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-xs text-cyan-300">
+                <Paperclip size={13} className="shrink-0" />
+                <span className="font-semibold truncate max-w-[200px]">{attachedFile.name}</span>
+                <span className="text-[10px] text-cyan-400/60 font-mono">({Math.round(attachedFile.size / 1024)} KB)</span>
+                <button
+                  type="button"
+                  onClick={() => setAttachedFile(null)}
+                  className="p-0.5 hover:text-white rounded ml-1"
+                  title="Remove attachment"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            )}
+
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+
             {/* Input Composer Box */}
             <form 
               onSubmit={(e) => {
                 e.preventDefault();
-                submitStreamMessage(inputText);
+                if ((inputText.trim() || attachedFile) && !isStreaming) {
+                  submitStreamMessage(inputText);
+                }
               }}
-              className="flex items-center gap-2 bg-white/[0.03] border border-white/10 rounded-2xl p-1.5 focus-within:border-cyber-cyan/50 focus-within:ring-1 focus-within:ring-cyber-cyan/30 transition-all shadow-inner"
+              className="flex items-end gap-2 bg-white/[0.03] border border-white/10 rounded-2xl p-2 focus-within:border-cyan-500/50 focus-within:ring-1 focus-within:ring-cyan-500/30 transition-all shadow-inner"
             >
-              <input
-                ref={inputRef}
-                type="text"
+              {/* Attachment Button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all shrink-0 mb-0.5"
+                title="Attach file (Text, Markdown, JSON, CSV)"
+              >
+                <Paperclip size={18} />
+              </button>
+
+              {/* Multiline Auto-resizing Textarea */}
+              <textarea
+                ref={textareaRef}
+                rows={1}
                 value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
+                onChange={(e) => {
+                  setInputText(e.target.value);
+                  adjustTextareaHeight(e.target);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if ((inputText.trim() || attachedFile) && !isStreaming) {
+                      submitStreamMessage(inputText);
+                    }
+                  }
+                }}
                 placeholder={
                   selectedAgent === 'research'
                     ? "Ask Vani to research competitors, pricing, or market trends..."
@@ -1188,19 +1317,19 @@ export default function Workspace({
                     ? "Tell Vani what MVP to build..."
                     : selectedAgent === 'plan'
                     ? "Tell Vani what task to plan..."
-                    : "Ask Vani anything or speak naturally..."
+                    : "Ask Vani anything or speak naturally (Shift+Enter for newline)..."
                 }
-                className="flex-1 bg-transparent px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none"
+                className="flex-1 bg-transparent px-2 py-1.5 text-sm text-white placeholder-slate-400 focus:outline-none resize-none max-h-40 min-h-[38px] leading-relaxed custom-scrollbar"
               />
 
-              {/* Voice Mic Button (Tap/Hold with VAD) */}
+              {/* Voice Mic Button */}
               <button
                 type="button"
                 onClick={isRecording ? stopRecording : () => startRecording()}
-                className={`p-2 rounded-xl transition-all flex items-center justify-center shrink-0 ${
+                className={`p-2 rounded-xl transition-all flex items-center justify-center shrink-0 mb-0.5 ${
                   isRecording 
-                    ? 'bg-rose-500 text-white animate-pulse shadow-glow-rose' 
-                    : 'text-white/60 hover:text-cyber-cyan hover:bg-white/5'
+                    ? 'bg-rose-500 text-white animate-pulse shadow-md' 
+                    : 'text-slate-400 hover:text-cyan-400 hover:bg-white/5'
                 }`}
                 title={isRecording ? 'Stop Recording' : 'Start Voice Input (Sarvam Saaras v4)'}
               >
@@ -1212,7 +1341,7 @@ export default function Workspace({
                 <button
                   type="button"
                   onClick={handleStopExecution}
-                  className="p-2 bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 rounded-xl transition-all shrink-0 border border-rose-500/40"
+                  className="p-2 bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 rounded-xl transition-all shrink-0 border border-rose-500/40 mb-0.5"
                   title="Stop generation"
                 >
                   <Square size={16} />
@@ -1220,13 +1349,13 @@ export default function Workspace({
               ) : (
                 <button
                   type="submit"
-                  disabled={!inputText.trim()}
-                  className={`p-2 rounded-xl transition-all flex items-center justify-center shrink-0 ${
-                    inputText.trim() 
-                      ? 'bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white shadow-md hover:opacity-90' 
+                  disabled={(!inputText.trim() && !attachedFile) || isStreaming}
+                  className={`p-2 rounded-xl transition-all flex items-center justify-center shrink-0 mb-0.5 ${
+                    (inputText.trim() || attachedFile) && !isStreaming
+                      ? 'bg-gradient-to-r from-indigo-500 to-cyan-500 text-white shadow-md hover:opacity-90' 
                       : 'text-white/20 bg-white/5 cursor-not-allowed'
                   }`}
-                  title="Send instruction"
+                  title="Send instruction (Enter)"
                 >
                   <Send size={16} />
                 </button>

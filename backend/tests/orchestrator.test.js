@@ -6,6 +6,16 @@ import prisma from '../lib/prisma.js';
 
 vi.mock('../lib/prisma.js', () => ({
   default: {
+    project: {
+      findFirst: vi.fn().mockResolvedValue({
+        id: 'proj_test_1',
+        userId: 'user_1',
+        name: 'Test Project'
+      })
+    },
+    projectMemory: {
+      create: vi.fn().mockResolvedValue({ id: 'mem_1' })
+    },
     $transaction: vi.fn(async (cb) => {
       const mockTx = {
         document: {
@@ -71,6 +81,7 @@ describe('Master AI Orchestrator', () => {
       prompt: 'Vani, student PG finder startup ka detailed BRD banao aur current competitors research karo.',
       agentType: 'brd',
       projectId: 'proj_test_1',
+      userId: 'user_1',
       apiKeys: { geminiKey: 'mock-gemini-key', tinyfishKey: 'mock-tf-key' },
       onEvent
     });

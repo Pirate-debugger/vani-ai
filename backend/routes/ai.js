@@ -3,7 +3,7 @@ import prisma from '../lib/prisma.js';
 import { decryptKey } from '../lib/crypto.js';
 import { streamAIResponse } from '../services/llm-stream.js';
 import { orchestrate } from '../services/orchestrator.js';
-import { getAuthUser, verifyProjectOwnership } from '../middleware/auth.js';
+import { getAuthUser, requireAuth, verifyProjectOwnership } from '../middleware/auth.js';
 import { getProvidersStatus } from '../services/providers/providerRouter.js';
 
 const router = express.Router();
@@ -269,9 +269,9 @@ router.post('/chat-stream', async (req, res) => {
  * GET /api/ai/session/:sessionId/state
  * Retrieves comprehensive canonical session state for session resume and continuity
  */
-router.get('/session/:sessionId/state', async (req, res) => {
+router.get('/session/:sessionId/state', requireAuth, async (req, res) => {
   try {
-    const authUser = getAuthUser(req);
+    const authUser = req.authUser || getAuthUser(req);
     const { sessionId } = req.params;
 
     const session = await prisma.chatSession.findUnique({
@@ -296,7 +296,7 @@ router.get('/session/:sessionId/state', async (req, res) => {
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    if (authUser?.id && session.userId !== authUser.id) {
+    if (session.userId !== authUser.id) {
       return res.status(403).json({ error: 'Forbidden: Access denied to this session' });
     }
 

@@ -56,9 +56,15 @@ export async function orchestrate({
     }
   };
 
-  // 0. VERIFY PROJECT OWNERSHIP IF PROJECTID SUPPLIED
+  // 0. VERIFY PROJECT & SESSION OWNERSHIP
   let verifiedProject = null;
-  if (projectId && userId) {
+  if (projectId) {
+    if (!userId) {
+      const err = new Error('Authentication required when referencing a project.');
+      err.status = 401;
+      err.code = 'UNAUTHORIZED';
+      throw err;
+    }
     try {
       verifiedProject = await verifyProjectOwnership(projectId, userId);
     } catch (authErr) {
@@ -67,6 +73,23 @@ export async function orchestrate({
       err.status = 403;
       err.code = 'FORBIDDEN';
       throw err;
+    }
+  }
+
+  if (sessionId) {
+    try {
+      const existingSession = await prisma.chatSession.findUnique({
+        where: { id: sessionId },
+        select: { id: true, userId: true, projectId: true }
+      });
+      if (existingSession && userId && existingSession.userId !== userId) {
+        const err = new Error('Access denied: You do not own this session.');
+        err.status = 403;
+        err.code = 'FORBIDDEN';
+        throw err;
+      }
+    } catch (sErr) {
+      if (sErr.code === 'FORBIDDEN') throw sErr;
     }
   }
 

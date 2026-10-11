@@ -3,40 +3,79 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --bg-base: #0B0F17;
+    --bg-card: #111827;
+    --bg-surface: #1E293B;
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --text-primary: #F1F5F9;
+    --text-muted: #94A3B8;
+    --accent-indigo: #6366F1;
+    --accent-cyan: #06B6D4;
+    --accent-purple: #8B5CF6;
+  }
+
   body {
-    background-color: var(--cyber-bg-color, #07050F);
-    color: var(--cyber-text, #F8F7FF);
-    font-family: 'Outfit', 'Inter', sans-serif;
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    user-select: text;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Unrestricted text selection in workspace */
+  ::selection {
+    background-color: rgba(99, 102, 241, 0.35);
+    color: #FFFFFF;
+  }
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001s !important;
+    scroll-behavior: auto !important;
   }
 }
 
 [data-theme="light"] {
-  --cyber-bg-color: #F0EEFF;
-  --cyber-text: #1a1030;
-  --glass-bg: rgba(240, 235, 255, 0.7);
-  --glass-border: rgba(100, 80, 200, 0.2);
+  --bg-base: #F8FAFC;
+  --bg-card: #FFFFFF;
+  --bg-surface: #F1F5F9;
+  --border-subtle: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.16);
+  --text-primary: #0F172A;
+  --text-muted: #64748B;
+  --cyber-bg-color: #F8FAFC;
+  --cyber-text: #0F172A;
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(0, 0, 0, 0.08);
 }
 
-/* Custom Glassmorphism styles */
+/* Custom Workspace Panels */
 .glass-panel {
-  background: var(--glass-bg, rgba(15, 12, 30, 0.45));
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.08));
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  background: rgba(17, 24, 39, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.35);
 }
 
 [data-theme="light"] .glass-panel {
-  background: rgba(255, 255, 255, 0.6);
-  border-color: rgba(100, 80, 200, 0.3);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06);
 }
 
-/* Animation Utilities */
-.animate-scale-in { animation: scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-@keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
+.workspace-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 1rem;
 }
 
 @keyframes waveform {
