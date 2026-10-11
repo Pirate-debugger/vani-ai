@@ -27,30 +27,35 @@ if (isPostgres) {
     throw err;
   }
 } else {
-  const { PrismaBetterSqlite3 } = await import('@prisma/adapter-better-sqlite3');
   let url = dbUrl;
-  if (process.env.VERCEL) {
-    const tmpDbPath = '/tmp/dev.db';
-    if (!fs.existsSync(tmpDbPath)) {
-      try {
-        const templateDbPath = path.join(__dirname, '..', 'prisma', 'dev.db');
-        if (fs.existsSync(templateDbPath)) {
-          fs.copyFileSync(templateDbPath, tmpDbPath);
-          fs.chmodSync(tmpDbPath, 0o666);
-        } else {
-          fs.writeFileSync(tmpDbPath, '');
+  try {
+    const { PrismaBetterSqlite3 } = await import('@prisma/adapter-better-sqlite3');
+    if (process.env.VERCEL) {
+      const tmpDbPath = '/tmp/dev.db';
+      if (!fs.existsSync(tmpDbPath)) {
+        try {
+          const templateDbPath = path.join(__dirname, '..', 'prisma', 'dev.db');
+          if (fs.existsSync(templateDbPath)) {
+            fs.copyFileSync(templateDbPath, tmpDbPath);
+            fs.chmodSync(tmpDbPath, 0o666);
+          } else {
+            fs.writeFileSync(tmpDbPath, '');
+          }
+        } catch (err) {
+          console.error('Failed to copy SQLite database to /tmp:', err);
         }
-      } catch (err) {
-        console.error('Failed to copy SQLite database to /tmp:', err);
+      }
+      url = `file:${tmpDbPath}`;
+    } else {
+      if (!url.startsWith('file:')) {
+        url = `file:${url}`;
       }
     }
-    url = `file:${tmpDbPath}`;
-  } else {
-    if (!url.startsWith('file:')) {
-      url = `file:${url}`;
-    }
+    adapter = new PrismaBetterSqlite3({ url });
+  } catch (sqliteErr) {
+    console.warn('[Prisma] SQLite adapter fallback (standard client will be used):', sqliteErr.message);
+    adapter = null;
   }
-  adapter = new PrismaBetterSqlite3({ url });
 }
 
 // Cache client on globalThis to prevent connection leaks across serverless/HMR invocations

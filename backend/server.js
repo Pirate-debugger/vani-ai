@@ -289,8 +289,15 @@ app.use((err, req, res, next) => {
   });
 });
 
+const isDirectEntry = Boolean(
+  process.argv[1] && (
+    path.resolve(process.argv[1]) === fileURLToPath(import.meta.url) ||
+    process.argv[1].endsWith('server.js')
+  )
+);
+
 let server = null;
-if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
+if (isDirectEntry && process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   server = app.listen(PORT, () => {
     console.log(`=========================================`);
     console.log(` Vani AI Express Backend Running on:      `);
