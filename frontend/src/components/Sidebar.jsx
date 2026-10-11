@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Home, MessageSquare, Mic, Settings, Menu, X, Globe, Radio,
-  LogOut, User, Plus, Trash2, ChevronDown, ChevronRight, Clock, CheckCircle2,
-  Folder, FileText, Sparkles, Check, Layers, CheckSquare, Compass, Calendar, ArrowRight
+  Settings, Menu, X, Globe, Radio,
+  LogOut, Plus, Trash2, ChevronDown, ChevronRight, Clock, CheckCircle2,
+  Folder, FileText, Sparkles, Layers, CheckSquare, Calendar
 } from 'lucide-react';
 import { useChatHistory } from '../context/ChatHistoryContext';
 import { useNavigate, useLocation } from 'react-router-dom';

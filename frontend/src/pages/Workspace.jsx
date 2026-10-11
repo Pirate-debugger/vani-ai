@@ -12,34 +12,19 @@ import {
   Check, 
   Globe, 
   Cpu, 
-  Layers, 
   Square,
   ChevronDown,
   Paperclip,
-  Folder,
   FileText,
   X,
-  Maximize2,
-  Minimize2,
-  Split,
-  RefreshCw,
-  AlertCircle,
   Search,
-  ArrowUp,
-  ArrowDown,
-  RotateCcw,
-  Play,
-  Settings,
-  Flame,
-  Code2,
-  ListTodo,
   CheckSquare,
   Bot
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
 import { useLocation } from 'react-router-dom';
-import { CANONICAL_AGENTS, PRIMARY_MODES, ADVANCED_AGENTS, getAgentDef } from '../config/canonicalAgents';
+import { PRIMARY_MODES, ADVANCED_AGENTS, getAgentDef } from '../config/canonicalAgents';
 import AgentActivityCard from '../components/AgentActivityCard';
 import VoiceOrb from '../components/VoiceOrb';
 import DocumentViewer from '../components/DocumentViewer';
@@ -102,7 +87,6 @@ export default function Workspace({
   const chatEndRef = useRef(null);
   const dropdownRef = useRef(null);
   const projectDropdownRef = useRef(null);
-  const inputRef = useRef(null);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const [attachedFile, setAttachedFile] = useState(null);
