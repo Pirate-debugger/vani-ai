@@ -15,6 +15,7 @@
   "dependencies": {
     "@google/genai": "^2.27.0",
     "@prisma/adapter-better-sqlite3": "^7.8.0",
+    "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.8.0",
     "@tiny-fish/sdk": "^0.8.0",
     "axios": "^1.6.8",
@@ -31,6 +32,9 @@
     "openai": "^4.47.1",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
+    "pg": "^8.23.1",
+    "pino": "^10.4.0",
+    "pino-http": "^11.0.0",
     "prisma": "^7.8.0",
     "zod": "^3.25.76"
   },

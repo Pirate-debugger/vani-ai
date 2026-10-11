@@ -5,7 +5,7 @@
 ![Node.js](https://img.shields.io/badge/Node.js-20+-green?logo=node.js)
 ![React](https://img.shields.io/badge/React-18-blue?logo=react)
 ![Vite](https://img.shields.io/badge/Vite-5-purple?logo=vite)
-![Sarvam AI](https://img.shields.io/badge/Sarvam%20AI-Saaras%20v3%20%7C%20Bulbul%20v2-orange)
+![Sarvam AI](https://img.shields.io/badge/Sarvam%20AI-Saaras%20v4%20%7C%20Bulbul%20v2-orange)
 ![TinyFish](https://img.shields.io/badge/TinyFish-Web%20Agent%20%26%20Search-cyan)
 ![Prisma](https://img.shields.io/badge/Prisma-7.8-indigo?logo=prisma)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
@@ -15,7 +15,7 @@
 ## 📖 1. What is Vani AI?
 
 Vani AI is a voice-first, multilingual AI business copilot designed for Indian founders, product managers, and builders. You can speak naturally in **Hindi, Hinglish, or English** (as well as 8+ regional Indian languages) to:
-- Generate complete, 27-section **Business Requirements Documents (BRDs)**
+- Generate complete, 29-section **Enterprise Business Requirements Documents (BRDs)**
 - Conduct **live web competitor analysis** via TinyFish
 - Automatically extract and track **actionable delivery tasks**
 - Receive **short, concise voice responses** synthesized in your language
@@ -29,7 +29,7 @@ Vani AI is a voice-first, multilingual AI business copilot designed for Indian f
 USER VOICE COMMAND
        │
        ▼
-1. Sarvam Saaras v3 STT (Speech-to-Text)
+1. Sarvam Saaras v4 STT (Speech-to-Text)
        │
        ▼
 2. Intent Router (Classifier)
@@ -39,7 +39,7 @@ USER VOICE COMMAND
        │     └─► YES ─► TinyFish Search & Web Agent ──┐
        │                                              │
        ▼                                              ▼
-3. BRD Generation Agent (27-Section Architecture) ◄───┘
+3. BRD Generation Agent (29-Section Architecture) ◄───┘
        │
        ▼
 4. Robust JSON Parser & Schema Validator (with Repair Recovery)
@@ -63,10 +63,10 @@ USER VOICE COMMAND
 
 | Category | Capability | Technology |
 |---|---|---|
-| 🎙️ **Voice First** | Speech recognition in Indian accents & dialects | Sarvam Saaras v3 ASR |
+| 🎙️ **Voice First** | Speech recognition in Indian accents & dialects | Sarvam Saaras v4 ASR |
 | 🔊 **Voice Feedback** | Natural regional voice output (<350 chars) | Sarvam Bulbul v2 TTS |
 | 🌐 **Live Web Intelligence** | Real-time competitor pricing, market signals & web scraping | TinyFish TypeScript SDK (`@tiny-fish/sdk`) |
-| 📋 **BRD Generation** | 27-section enterprise Business Requirements Document | Gemini 2.0 Flash / OpenAI GPT-4o |
+| 📋 **BRD Generation** | 29-section enterprise Business Requirements Document | Gemini 2.0/3.8 Flash / OpenAI GPT-4o |
 | 🎯 **Task Extraction** | Deduplicated high/medium/low priority action items | Deterministic Task Extractor |
 | 🔒 **Enterprise Security** | IDOR prevention, project ownership verification, safe errors | Express middleware + AES-256-GCM |
 | 🔀 **Bridge / Interpreter** | Live bilingual voice bridge (e.g. Hindi ⇄ Tamil) | Sarvam Mayura v1 Translation |
@@ -78,14 +78,14 @@ USER VOICE COMMAND
 
 | User Voice Input | Intent | Action Executed | Spoken Response |
 |---|---|---|---|
-| *"Vani, student PG finder startup ka BRD banao aur competitors research karo."* | `brd` + `research` | Triggers TinyFish search for PG competitors, synthesizes 27-section BRD, saves document and extracts tasks. | *"BRD ready hai. Maine competitor research, 10 functional requirements aur 7 implementation tasks add kiye hain."* |
-| *"Vani, mere startup ka BRD bana do."* | `brd` | Generates 27-section BRD, creates atomic Document + Tasks. | *"Aapka BRD document ready hai. Maine 8 action items add kiye hain."* |
+| *"Vani, student PG finder startup ka BRD banao aur competitors research karo."* | `brd` + `research` | Triggers TinyFish search for PG competitors, synthesizes 29-section BRD, saves document and extracts tasks. | *"BRD ready hai. Maine competitor research, 10 functional requirements aur 7 implementation tasks add kiye hain."* |
+| *"Vani, mere startup ka BRD bana do."* | `brd` | Generates 29-section BRD, creates atomic Document + Tasks. | *"Aapka BRD document ready hai. Maine 8 action items add kiye hain."* |
 | *"Vani, show me the tasks from the BRD."* | `task_command` | Fetches project tasks owned by authenticated user. | *"Task 1: Setup Student Auth (pending). Task 2: Integrate Map Search..."* |
 | *"Mark task 1 as done."* | `task_command` | Updates task status to `done` after verifying user ownership. | *"Task 'Setup Student Auth' status updated to done."* |
 
 ---
 
-## 📋 5. BRD Document Structure (27 Sections)
+## 📋 5. BRD Document Structure (29 Sections)
 
 Every generated BRD strictly complies with enterprise requirements engineering:
 
@@ -97,11 +97,11 @@ Every generated BRD strictly complies with enterprise requirements engineering:
 6. **Success Criteria**
 7. **Stakeholders**
 8. **Target Users**
-9. **User Personas**
+9. **Personas**
 10. **Current State**
 11. **Proposed Solution**
-12. **Functional Requirements** (`FR-001` to `FR-008` with Actor, Priority, Expected Outcome)
-13. **Non-Functional Requirements** (`NFR-001` Performance, Security, Scalability, Availability)
+12. **Functional Requirements** (`FR-001` through `FR-008` with Actor, Priority, Expected Outcome)
+13. **Non-Functional Requirements** (`NFR-001` to `NFR-005`: Security, Performance, Scalability, Availability, Accessibility)
 14. **Business Rules**
 15. **User Workflows**
 16. **Data Requirements**
@@ -111,11 +111,13 @@ Every generated BRD strictly complies with enterprise requirements engineering:
 20. **Constraints**
 21. **Risks and Mitigation**
 22. **KPIs**
-23. **Competitor/Market Analysis** (Ground in real TinyFish findings when research is enabled)
-24. **Open Questions**
-25. **MVP Scope**
-26. **Future Scope**
-27. **Implementation Priorities**
+23. **Competitor Analysis** (Ground in real TinyFish findings when research is enabled)
+24. **Market Insights**
+25. **Open Questions**
+26. **MVP Scope**
+27. **Future Scope**
+28. **Implementation Priorities**
+29. **Sources**
 
 ---
 

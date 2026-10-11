@@ -952,12 +952,22 @@ ${liveResearchData.sources.map((s, i) => `[${i + 1}] ${s.title} (${s.url}): ${s.
     };
 
     if (agentRunRecord) {
+      const estimatedTokens = response.usage?.totalTokens || Math.ceil((userPrompt.length + (response.response?.length || 0)) / 4);
+      let estimatedCost = 0.0005;
+      if (response.usage?.promptTokens || response.usage?.completionTokens) {
+        const inputK = (response.usage.promptTokens || 0) / 1000;
+        const outputK = (response.usage.completionTokens || 0) / 1000;
+        estimatedCost = Number((inputK * 0.00015 + outputK * 0.0006).toFixed(6));
+      }
+
       await prisma.agentRun.update({
         where: { id: agentRunRecord.id },
         data: {
           status: 'completed',
           model: response.model || chosenProviderName,
           result: JSON.stringify(finalOutput),
+          tokens: estimatedTokens,
+          cost: estimatedCost,
           completedAt: new Date()
         }
       }).catch(() => {});

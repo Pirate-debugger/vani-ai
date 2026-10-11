@@ -1,28 +1,38 @@
 import { PrismaClient } from '@prisma/client';
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Resolve the database file path from DATABASE_URL env var
-function resolveDbUrl() {
-  let url = process.env.DATABASE_URL ?? 'file:./prisma/dev.db';
-  
-  // Vercel serverless environment writeable sqlite workaround
+const dbUrl = process.env.DATABASE_URL ?? 'file:./prisma/dev.db';
+const isPostgres = dbUrl.startsWith('postgresql://') || dbUrl.startsWith('postgres://') || process.env.DATABASE_PROVIDER === 'postgresql';
+
+let adapter = null;
+
+if (isPostgres) {
+  try {
+    const { PrismaPg } = await import('@prisma/adapter-pg');
+    const pg = await import('pg');
+    const Pool = pg.default?.Pool || pg.Pool;
+    const pool = new Pool({ connectionString: dbUrl });
+    adapter = new PrismaPg(pool);
+  } catch (err) {
+    console.error('[Prisma] Failed to initialize PostgreSQL adapter:', err);
+    throw err;
+  }
+} else {
+  const { PrismaBetterSqlite3 } = await import('@prisma/adapter-better-sqlite3');
+  let url = dbUrl;
   if (process.env.VERCEL) {
     const tmpDbPath = '/tmp/dev.db';
     if (!fs.existsSync(tmpDbPath)) {
       try {
         const templateDbPath = path.join(__dirname, '..', 'prisma', 'dev.db');
-        console.log(`[SQLite Workaround] Checking database template at: ${templateDbPath}`);
         if (fs.existsSync(templateDbPath)) {
-          console.log(`[SQLite Workaround] Template found! Copying to ${tmpDbPath}`);
           fs.copyFileSync(templateDbPath, tmpDbPath);
           fs.chmodSync(tmpDbPath, 0o666);
         } else {
-          console.warn(`[SQLite Workaround] Template NOT found! Creating empty SQLite file at ${tmpDbPath}`);
           fs.writeFileSync(tmpDbPath, '');
         }
       } catch (err) {
@@ -35,12 +45,9 @@ function resolveDbUrl() {
       url = `file:${url}`;
     }
   }
-  return url;
+  adapter = new PrismaBetterSqlite3({ url });
 }
 
-// The adapter expects { url: 'file:./path/to/db' }
-const adapter = new PrismaBetterSqlite3({ url: resolveDbUrl() });
-
-const prisma = new PrismaClient({ adapter });
+const prisma = new PrismaClient(adapter ? { adapter } : undefined);
 
 export default prisma;

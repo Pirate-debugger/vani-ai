@@ -22,6 +22,9 @@ import integrationRoutes from './routes/integration.js';
 import customAgentRoutes from './routes/customAgent.js';
 import scheduleRoutes from './routes/schedule.js';
 import { startSchedulerDaemon } from './services/schedulerService.js';
+import crypto from 'crypto';
+import pinoHttp from 'pino-http';
+import logger from './lib/logger.js';
 
 dotenv.config();
 
@@ -155,13 +158,57 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
+app.use(pinoHttp({
+  logger,
+  autoLogging: process.env.NODE_ENV !== 'test',
+  genReqId: (req) => req.headers['x-request-id'] || req.headers['x-correlation-id'] || crypto.randomUUID()
+}));
+
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-// Health Check
+// Health Check Endpoints (Phase 2 Observability)
+// 1. Liveness probe: verifies process is alive and responsive
+app.get('/api/health/live', (req, res) => {
+  res.json({
+    status: 'alive',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
+// 2. Readiness probe: verifies database connection & external services
+app.get('/api/health/ready', async (req, res) => {
+  try {
+    // Verify database connectivity
+    await prisma.user.findFirst({ select: { id: true } });
+    res.json({
+      status: 'ready',
+      database: 'connected',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      services: {
+        sarvam: Boolean(process.env.SARVAM_API_KEY),
+        tinyfish: Boolean(process.env.TINYFISH_API_KEY),
+        gemini: Boolean(process.env.GEMINI_API_KEY),
+        openai: Boolean(process.env.OPENAI_API_KEY)
+      }
+    });
+  } catch (dbErr) {
+    res.status(503).json({
+      status: 'not_ready',
+      database: 'disconnected',
+      error: dbErr.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 3. General Health Check (Backward-compatible)
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'online',
+    uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     services: {
       sarvam: Boolean(process.env.SARVAM_API_KEY),
@@ -201,7 +248,7 @@ if (existsSync(indexHtml)) {
 // Global Sanitized Error Handler
 app.use((err, req, res, next) => {
   const status = err.status || (err.name === 'ValidationError' ? 400 : 500);
-  console.error(`[API Error] ${req.method} ${req.originalUrl}:`, err.message);
+  logger.error({ reqId: req.id, method: req.method, url: req.originalUrl, err: err.message }, 'API Error');
 
   // In production, do not return database internals or filesystem paths
   const safeMessage = (status === 500 && process.env.NODE_ENV === 'production')

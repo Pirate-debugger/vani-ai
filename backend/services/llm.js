@@ -109,7 +109,12 @@ export const callOpenAILLM = async (messages, prompt, langCode, personality, pro
   return {
     response: completion.choices[0].message.content,
     model: 'gpt-4o-mini',
-    simulated: false
+    simulated: false,
+    usage: {
+      promptTokens: completion.usage?.prompt_tokens || 0,
+      completionTokens: completion.usage?.completion_tokens || 0,
+      totalTokens: completion.usage?.total_tokens || 0
+    }
   };
 };
 
@@ -167,11 +172,17 @@ export const callGeminiLLM = async (messages, prompt, langCode, personality, pro
       const candidate = response.data?.candidates?.[0];
       const geminiText = candidate?.content?.parts?.[0]?.text;
       if (geminiText) {
+        const usage = response.data?.usageMetadata;
         return {
           response: geminiText,
           model: modelName,
           simulated: false,
-          groundingMetadata: candidate?.groundingMetadata || null
+          groundingMetadata: candidate?.groundingMetadata || null,
+          usage: {
+            promptTokens: usage?.promptTokenCount || 0,
+            completionTokens: usage?.candidatesTokenCount || 0,
+            totalTokens: usage?.totalTokenCount || 0
+          }
         };
       }
     } catch (err) {

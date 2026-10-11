@@ -1,0 +1,258 @@
+// This is your Prisma schema file for PostgreSQL,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String        @id @default(cuid())
+  name         String
+  email        String        @unique
+  passwordHash String
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  googleId     String?       @unique
+  expiresAt    DateTime?
+  sessions         ChatSession[]
+  apiKeys      ApiKey[]
+  projects     Project[]
+  customAgents CustomAgent[]
+  agentRuns    AgentRun[]
+  scheduledActions ScheduledAction[]
+}
+
+model ChatSession {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String        @default("New Chat")
+  lang         String        @default("hi-IN")
+  agentType    String        @default("voice_assistant")
+  currentMode  String        @default("auto")
+  activeRunId  String?
+  artifactState String?
+  timeContext  String?
+  projectId    String?
+  project      Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt    DateTime      @default(now())
+  messages     ChatMessage[]
+  agentRuns    AgentRun[]
+  scheduledActions ScheduledAction[]
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      MessageRole
+  content   String
+  model     String?
+  createdAt DateTime    @default(now())
+}
+
+model ApiKey {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider     ApiProvider
+  encryptedKey String
+  createdAt    DateTime    @default(now())
+
+  @@unique([userId, provider])
+}
+
+enum MessageRole {
+  user
+  assistant
+}
+
+enum ApiProvider {
+  sarvam
+  openai
+  gemini
+  tinyfish
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  status      String        @default("active")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  documents   Document[]
+  sessions    ChatSession[]
+  tasks       Task[]
+  agentRuns   AgentRun[]
+  memories    ProjectMemory[]
+  scheduledActions ScheduledAction[]
+}
+
+model Document {
+  id          String            @id @default(cuid())
+  projectId   String
+  project     Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type        String            // brd, prd, roadmap, startup_plan, user_stories, etc.
+  title       String
+  content     String            // Stored as Markdown or JSON string
+  metadata    String?           // Stored as JSON string (sources, researchUsed, confidence, etc.)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  versions    DocumentVersion[]
+  tasks       Task[]
+}
+
+model DocumentVersion {
+  id          String   @id @default(cuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  content     String
+  metadata    String?  // Snapshot of document metadata at this version
+  createdAt   DateTime @default(now())
+  versionName String?
+}
+
+enum TaskStatus {
+  pending
+  in_progress
+  done
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  documentId  String?
+  document    Document?  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  assignee    String?
+  status      TaskStatus @default(pending)
+  priority    String     @default("medium")
+  source      String     @default("voice")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model CustomAgent {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  instructions   String
+  preferredModel String   @default("auto") // auto, openai, gemini, sarvam
+  tools          String   @default("[]")   // JSON array: ["web_search", "web_fetch", "browser", "project_knowledge", "documents"]
+  autonomy       String   @default("auto") // ask_before, auto, manual
+  language       String   @default("hi,en") // hi, en, hinglish
+  outputStyle    String   @default("detailed") // concise, detailed, structured
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model AgentRun {
+  id             String          @id @default(cuid())
+  userId         String?
+  user           User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId      String?
+  project        Project?        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sessionId      String?
+  session        ChatSession?    @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  requestId      String?         @unique
+  agentId        String
+  mode           String          @default("auto")
+  status         String          @default("queued") // queued, running, paused, waiting_for_approval, completed, failed, cancelled
+  prompt         String
+  provider       String?
+  model          String?
+  result         String?         // Stored as JSON string
+  error          String?
+  cost           Float?
+  tokens         Int?
+  startedAt      DateTime        @default(now())
+  completedAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  steps          AgentStep[]
+  toolExecutions ToolExecution[]
+}
+
+model AgentStep {
+  id          String    @id @default(cuid())
+  runId       String
+  run         AgentRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  step        String
+  title       String
+  detail      String?
+  status      String    @default("running") // running, completed, failed, skipped
+  provider    String?
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+}
+
+model ToolExecution {
+  id          String    @id @default(cuid())
+  runId       String
+  run         AgentRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  tool        String
+  input       String?   // JSON string
+  output      String?   // JSON string
+  status      String    @default("running") // running, completed, failed
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+}
+
+model ProjectMemory {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type        String   // 'decision' | 'open_question' | 'knowledge' | 'source'
+  title       String
+  content     String
+  category    String?
+  confidence  String?
+  sourceUrl   String?
+  status      String?  // 'open' | 'resolved' for questions; 'active' | 'superseded' for decisions
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ScheduledAction {
+  id          String       @id @default(cuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sessionId   String?
+  session     ChatSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  title       String
+  actionType  String       // 'research' | 'reminder' | 'brd' | 'task_sync' | 'custom'
+  payload     String       // JSON string { prompt, agentType, params, target }
+  schedule    String       // e.g. "Every Monday at 8:00 AM" or cron or iso string
+  timezone    String       @default("Asia/Kolkata")
+  status      String       @default("scheduled") // scheduled, queued, running, completed, failed, paused, cancelled
+  nextRunAt   DateTime
+  lastRunAt   DateTime?
+  lastResult  String?      // JSON string
+  retryCount  Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  sid       String   @unique
+  data      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

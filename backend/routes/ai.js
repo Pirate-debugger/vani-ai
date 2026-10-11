@@ -59,17 +59,19 @@ export const resolveUserApiKeys = async (req) => {
   return keys;
 };
 
-// Idempotency cache to prevent duplicate job execution (Section 77)
-const idempotencyCache = new Map();
-const cleanupIdempotency = () => {
-  const now = Date.now();
-  for (const [key, val] of idempotencyCache.entries()) {
-    if (now - val.timestamp > 30000) {
-      idempotencyCache.delete(key);
+// Database-backed idempotency helper
+async function checkDbIdempotency(requestId) {
+  if (!requestId) return null;
+  try {
+    const existing = await prisma.agentRun.findUnique({ where: { requestId } });
+    if (existing && existing.status === 'completed' && existing.result) {
+      return JSON.parse(existing.result);
     }
+    return null;
+  } catch {
+    return null;
   }
-};
-setInterval(cleanupIdempotency, 60000);
+}
 
 /**
  * Chat Completion route (/api/ai/chat)
@@ -80,14 +82,10 @@ router.post('/chat', async (req, res) => {
     const { prompt, messages, language_code, personality, profile, projectId, agentType, requestId, sessionId, timeContext } = req.body;
     const userPrompt = prompt || (messages?.length ? messages[messages.length - 1].content : '');
 
-    // Idempotency check: if requestId already processed recently, return cached response
-    if (requestId && idempotencyCache.has(requestId)) {
-      const cached = idempotencyCache.get(requestId);
-      if (cached.result) return res.json(cached.result);
-      if (cached.promise) {
-        const waitedResult = await cached.promise;
-        return res.json(waitedResult);
-      }
+    // Idempotency check: if requestId already processed in DB, return cached response
+    if (requestId) {
+      const cachedResult = await checkDbIdempotency(requestId);
+      if (cachedResult) return res.json(cachedResult);
     }
 
     if (!userPrompt?.trim() && (!messages || messages.length === 0)) {
@@ -134,10 +132,6 @@ router.post('/chat', async (req, res) => {
       apiKeys
     });
 
-    if (requestId) {
-      idempotencyCache.set(requestId, { result, timestamp: Date.now() });
-    }
-
     return res.json(result);
   } catch (error) {
     console.error('[AI Chat Error]:', error.message);
@@ -179,17 +173,14 @@ router.post('/orchestrate-stream', async (req, res) => {
     const { prompt, messages, agentType, projectId, language_code, personality, profile, requestId, sessionId, timeContext } = req.body;
     const userPrompt = prompt || (messages?.length ? messages[messages.length - 1].content : '');
 
-    // Duplicate execution protection (Section 77)
-    if (requestId && idempotencyCache.has(requestId)) {
-      const cached = idempotencyCache.get(requestId);
-      if (cached.inProgress) {
-        res.write(`data: ${JSON.stringify({ type: 'info', message: 'Task already executing' })}\n\n`);
+    // DB-backed duplicate execution protection
+    if (requestId) {
+      const cached = await checkDbIdempotency(requestId);
+      if (cached) {
+        res.write(`data: ${JSON.stringify({ type: 'final.result', result: cached })}\n\n`);
+        res.write('data: [DONE]\n\n');
         return res.end();
       }
-    }
-
-    if (requestId) {
-      idempotencyCache.set(requestId, { inProgress: true, timestamp: Date.now() });
     }
 
     const authUser = getAuthUser(req);
@@ -237,10 +228,6 @@ router.post('/orchestrate-stream', async (req, res) => {
       onEvent
     });
 
-    if (requestId) {
-      idempotencyCache.set(requestId, { inProgress: false, result: finalResult, timestamp: Date.now() });
-    }
-
     if (!res.writableEnded) {
       res.write(`data: ${JSON.stringify({ type: 'final.result', result: finalResult })}\n\n`);
       res.write('data: [DONE]\n\n');
@@ -248,9 +235,6 @@ router.post('/orchestrate-stream', async (req, res) => {
     }
   } catch (error) {
     console.error('[Orchestrate Stream Error]:', error.message);
-    if (req.body?.requestId) {
-      idempotencyCache.delete(req.body.requestId);
-    }
     if (!res.writableEnded) {
       res.write(`data: ${JSON.stringify({ 
         type: 'error', 
