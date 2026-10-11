@@ -8,6 +8,8 @@ import session from 'express-session';
 import passport from 'passport';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import prisma from './lib/prisma.js';
+import { PrismaSessionStore } from './lib/sessionStore.js';
 import voiceRoutes from './routes/voice.js';
 import voiceCommandRoutes from './routes/voiceCommand.js';
 import aiRoutes from './routes/ai.js';
@@ -51,17 +53,16 @@ app.use(helmet({
       connectSrc: ["'self'", "https://api.sarvam.ai", "https://api.openai.com", "https://generativelanguage.googleapis.com", "https://cdn.jsdelivr.net"],
       mediaSrc: ["'self'", "blob:"],
       workerSrc: ["'self'", "blob:"],
-      scriptSrc: ["'self'", "'unsafe-eval'"],
+      scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       frameAncestors: ["'self'"],
     }
   }
 }));
 
-// API Header Optimizations
+// API Header Optimizations (CSP preserved for /api)
 app.use('/api', (req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');
-  res.removeHeader('Content-Security-Policy');
   next();
 });
 
@@ -74,6 +75,17 @@ const limiter = rateLimit({
   message: { error: 'Too many requests. Please try again in a minute.', code: 'RATE_LIMITED', retryable: true }
 });
 app.use('/api/', limiter);
+
+// Strict Rate Limiting for Auth routes (20 attempts per 15 min)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: 'Too many authentication attempts. Please try again later.', code: 'AUTH_RATE_LIMITED' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
 
 // CORS — explicit allowlist with credentials
 const defaultOrigins = [
@@ -100,18 +112,34 @@ app.use(cors({
         return callback(null, true);
       }
     }
-    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+    if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
     return callback(new Error(`CORS blocked for origin: ${origin}`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'api-subscription-key']
+  allowedHeaders: ['Content-Type', 'Authorization', 'api-subscription-key', 'X-Requested-With', 'X-Vani-Client']
 }));
 
-// Session Middleware
+// CSRF validation for state-changing API endpoints
+app.use('/api', (req, res, next) => {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+    const origin = req.headers.origin;
+    if (origin && !allowedOrigins.includes(origin) && !origin.startsWith('http://localhost:') && !origin.startsWith('http://127.0.0.1:')) {
+      return res.status(403).json({ error: 'Cross-site request blocked', code: 'CSRF_BLOCKED' });
+    }
+  }
+  next();
+});
+
+// Session Middleware — persistent Prisma store with memory fallback for test environments
+const sessionStore = (process.env.NODE_ENV === 'test' || !prisma?.session)
+  ? undefined
+  : new PrismaSessionStore();
+
 app.use(session({
+  store: sessionStore,
   secret: process.env.SESSION_SECRET || 'vani-dev-secret-change-in-prod',
   resave: false,
   saveUninitialized: false,
@@ -127,8 +155,8 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // Health Check
 app.get('/api/health', (req, res) => {

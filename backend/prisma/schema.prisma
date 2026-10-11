@@ -19,6 +19,8 @@ model User {
   updatedAt        DateTime      @updatedAt
   resetToken       String?
   resetTokenExpiry DateTime?
+  googleId     String?       @unique
+  expiresAt    DateTime?
   sessions         ChatSession[]
   apiKeys      ApiKey[]
   projects     Project[]
@@ -246,3 +248,13 @@ model ScheduledAction {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
+
+model Session {
+  id        String   @id @default(cuid())
+  sid       String   @unique
+  data      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+

@@ -27,22 +27,25 @@ const getSarvamKey = async (req) => {
   if (req.cachedSarvamKey) return req.cachedSarvamKey;
 
   const user = req.user || req.session?.localUser;
-  if (user && user.id) {
-    try {
-      const apiKeyRow = await prisma.apiKey.findUnique({
-        where: { userId_provider: { userId: user.id, provider: 'sarvam' } }
-      });
-      if (apiKeyRow && apiKeyRow.encryptedKey) {
-        const decrypted = decryptKey(apiKeyRow.encryptedKey);
-        req.cachedSarvamKey = decrypted;
-        return decrypted;
-      }
-    } catch (err) {
-      console.error('Error fetching API key from DB:', err);
-    }
+  // Cost-bearing endpoint protection: NEVER fall back to server keys for anonymous callers (Phase 1, Item 2)
+  if (!user || !user.id) {
+    return null;
   }
 
-  return process.env.SARVAM_API_KEY;
+  try {
+    const apiKeyRow = await prisma.apiKey.findUnique({
+      where: { userId_provider: { userId: user.id, provider: 'sarvam' } }
+    });
+    if (apiKeyRow && apiKeyRow.encryptedKey) {
+      const decrypted = decryptKey(apiKeyRow.encryptedKey);
+      req.cachedSarvamKey = decrypted;
+      return decrypted;
+    }
+  } catch (err) {
+    console.error('Error fetching API key from DB:', err);
+  }
+
+  return process.env.SARVAM_API_KEY || null;
 };
 
 /**

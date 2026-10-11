@@ -31,22 +31,25 @@ const getSarvamKey = async (req) => {
   if (req.cachedSarvamKey) return req.cachedSarvamKey;
 
   const user = getAuthUser(req);
-  if (user && user.id) {
-    try {
-      const apiKeyRow = await prisma.apiKey.findUnique({
-        where: { userId_provider: { userId: user.id, provider: 'sarvam' } }
-      });
-      if (apiKeyRow && apiKeyRow.encryptedKey) {
-        const decrypted = decryptKey(apiKeyRow.encryptedKey);
-        req.cachedSarvamKey = decrypted;
-        return decrypted;
-      }
-    } catch (err) {
-      console.error('Error fetching API key from DB:', err.message);
-    }
+  // Never fall back to server keys for anonymous callers (Phase 1, Item 2)
+  if (!user || !user.id) {
+    return null;
   }
 
-  return process.env.SARVAM_API_KEY;
+  try {
+    const apiKeyRow = await prisma.apiKey.findUnique({
+      where: { userId_provider: { userId: user.id, provider: 'sarvam' } }
+    });
+    if (apiKeyRow && apiKeyRow.encryptedKey) {
+      const decrypted = decryptKey(apiKeyRow.encryptedKey);
+      req.cachedSarvamKey = decrypted;
+      return decrypted;
+    }
+  } catch (err) {
+    console.error('Error fetching API key from DB:', err.message);
+  }
+
+  return process.env.SARVAM_API_KEY || null;
 };
 
 // Helper to resolve Gemini API key
@@ -54,22 +57,25 @@ const getGeminiKey = async (req) => {
   if (req.cachedGeminiKey) return req.cachedGeminiKey;
 
   const user = getAuthUser(req);
-  if (user && user.id) {
-    try {
-      const apiKeyRow = await prisma.apiKey.findUnique({
-        where: { userId_provider: { userId: user.id, provider: 'gemini' } }
-      });
-      if (apiKeyRow && apiKeyRow.encryptedKey) {
-        const decrypted = decryptKey(apiKeyRow.encryptedKey);
-        req.cachedGeminiKey = decrypted;
-        return decrypted;
-      }
-    } catch (err) {
-      console.error('Error fetching Gemini API key from DB:', err.message);
-    }
+  // Never fall back to server keys for anonymous callers (Phase 1, Item 2)
+  if (!user || !user.id) {
+    return null;
   }
 
-  return process.env.GEMINI_API_KEY;
+  try {
+    const apiKeyRow = await prisma.apiKey.findUnique({
+      where: { userId_provider: { userId: user.id, provider: 'gemini' } }
+    });
+    if (apiKeyRow && apiKeyRow.encryptedKey) {
+      const decrypted = decryptKey(apiKeyRow.encryptedKey);
+      req.cachedGeminiKey = decrypted;
+      return decrypted;
+    }
+  } catch (err) {
+    console.error('Error fetching Gemini API key from DB:', err.message);
+  }
+
+  return process.env.GEMINI_API_KEY || null;
 };
 
 /**
@@ -84,8 +90,14 @@ router.post('/command', upload.single('file'), async (req, res) => {
     const langCode = language_code || 'hi-IN';
     const authUser = getAuthUser(req);
 
-    // If a projectId is provided, verify that the authenticated user owns it
-    if (projectId && authUser && authUser.id) {
+    // Mandatory ownership verification whenever projectId is present (Phase 1, Item 3)
+    if (projectId) {
+      if (!authUser || !authUser.id) {
+        return res.status(401).json({
+          error: 'Authentication required when accessing project resources.',
+          code: 'UNAUTHORIZED'
+        });
+      }
       try {
         await verifyProjectOwnership(projectId, authUser.id);
       } catch (authErr) {

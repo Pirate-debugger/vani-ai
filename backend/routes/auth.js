@@ -21,15 +21,50 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       proxy: true
     },
     async (accessToken, refreshToken, profile, done) => {
-      const user = {
-        id: profile.id,
-        googleId: profile.id,
-        name: profile.displayName,
-        email: profile.emails?.[0]?.value || '',
-        avatar: profile.photos?.[0]?.value || '',
-        provider: 'google',
-      };
-      return done(null, user);
+      try {
+        const email = profile.emails?.[0]?.value?.trim().toLowerCase() || `${profile.id}@google.user`;
+        const name = profile.displayName || 'Google User';
+        const avatar = profile.photos?.[0]?.value || '';
+
+        // Upsert real User row in database (Phase 1, Item 7)
+        let dbUser = await prisma.user.findFirst({
+          where: {
+            OR: [
+              { googleId: profile.id },
+              { email }
+            ]
+          }
+        });
+
+        if (!dbUser) {
+          dbUser = await prisma.user.create({
+            data: {
+              googleId: profile.id,
+              name,
+              email,
+              passwordHash: 'oauth_managed',
+            }
+          });
+        } else if (!dbUser.googleId) {
+          dbUser = await prisma.user.update({
+            where: { id: dbUser.id },
+            data: { googleId: profile.id }
+          });
+        }
+
+        const user = {
+          id: dbUser.id,
+          googleId: profile.id,
+          name: dbUser.name,
+          email: dbUser.email,
+          avatar,
+          provider: 'google',
+        };
+        return done(null, user);
+      } catch (err) {
+        console.error('Google OAuth user sync error:', err);
+        return done(err, null);
+      }
     }
   ));
 
@@ -73,41 +108,59 @@ router.post('/register', async (req, res) => {
   const { name, email, password } = req.body;
 
   if (!email || !password || !name) {
-    return res.status(400).json({ error: 'Name, email, and password are required.' });
+    return res.status(400).json({ error: 'Name, email, and password are required.', code: 'INVALID_INPUT' });
   }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanName = name.trim();
 
   // Basic email format check
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    return res.status(400).json({ error: 'Invalid email format.' });
+  if (!emailRegex.test(cleanEmail)) {
+    return res.status(400).json({ error: 'Invalid email format.', code: 'INVALID_EMAIL' });
   }
 
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  // Password policy: min 10 characters (Phase 1, Item 6)
+  if (password.length < 10) {
+    return res.status(400).json({ error: 'Password must be at least 10 characters long.', code: 'WEAK_PASSWORD' });
+  }
+
+  const commonPasswords = ['password123', '1234567890', 'qwertyuiop', 'admin12345', 'password1234'];
+  if (commonPasswords.includes(password.toLowerCase())) {
+    return res.status(400).json({ error: 'Password is too common and insecure. Please choose a stronger password.', code: 'WEAK_PASSWORD' });
   }
 
   try {
-    const existing = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    const existing = await prisma.user.findUnique({ where: { email: cleanEmail } });
     if (existing) {
-      return res.status(409).json({ error: 'An account with this email already exists.' });
+      return res.status(409).json({ error: 'An account with this email already exists.', code: 'EMAIL_EXISTS' });
     }
 
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
     const user = await prisma.user.create({
       data: {
-        name: name.trim(),
-        email: email.toLowerCase(),
+        name: cleanName,
+        email: cleanEmail,
         passwordHash,
       },
     });
 
     const sessionUser = { id: user.id, name: user.name, email: user.email, provider: 'local', isGuest: false };
-    req.session.localUser = sessionUser;
-
-    return res.status(201).json({ user: sessionUser });
+    
+    // Rotate session ID on registration
+    if (req.session && typeof req.session.regenerate === 'function') {
+      req.session.regenerate((err) => {
+        if (err) console.warn('[Session] Session regenerate error:', err.message);
+        req.session.localUser = sessionUser;
+        return res.status(201).json({ user: sessionUser });
+      });
+    } else {
+      req.session.localUser = sessionUser;
+      return res.status(201).json({ user: sessionUser });
+    }
   } catch (err) {
     console.error('Register error:', err);
-    return res.status(500).json({ error: 'Registration failed. Please try again.' });
+    return res.status(500).json({ error: 'Registration failed. Please try again.', code: 'REGISTRATION_FAILED' });
   }
 });
 
@@ -118,27 +171,39 @@ router.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required.' });
+    return res.status(400).json({ error: 'Email and password are required.', code: 'INVALID_INPUT' });
   }
 
+  const cleanEmail = email.trim().toLowerCase();
+
   try {
-    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    const user = await prisma.user.findUnique({ where: { email: cleanEmail } });
+    // Generic error to prevent email enumeration (Phase 1, Item 6)
     if (!user) {
-      return res.status(401).json({ error: 'No account found with that email address.' });
+      return res.status(401).json({ error: 'Invalid email or password.', code: 'INVALID_CREDENTIALS' });
     }
 
     const match = await bcrypt.compare(password, user.passwordHash);
     if (!match) {
-      return res.status(401).json({ error: 'Incorrect password. Please try again.' });
+      return res.status(401).json({ error: 'Invalid email or password.', code: 'INVALID_CREDENTIALS' });
     }
 
     const sessionUser = { id: user.id, name: user.name, email: user.email, provider: 'local', isGuest: false };
-    req.session.localUser = sessionUser;
 
-    return res.json({ user: sessionUser });
+    // Rotate session ID on login to prevent session fixation attacks
+    if (req.session && typeof req.session.regenerate === 'function') {
+      req.session.regenerate((err) => {
+        if (err) console.warn('[Session] Session regenerate error on login:', err.message);
+        req.session.localUser = sessionUser;
+        return res.json({ user: sessionUser });
+      });
+    } else {
+      req.session.localUser = sessionUser;
+      return res.json({ user: sessionUser });
+    }
   } catch (err) {
     console.error('Login error:', err);
-    return res.status(500).json({ error: 'Login failed. Please try again.' });
+    return res.status(500).json({ error: 'Login failed. Please try again.', code: 'LOGIN_FAILED' });
   }
 });
 
@@ -162,20 +227,30 @@ router.post('/logout', (req, res, next) => {
   });
 });
 
-// ─── Guest / Legacy Local Login (kept for backward compatibility) ──────────
+// ─── Guest / Legacy Local Login ───────────────────────────────────────────
 
 // POST /api/auth/local-login
 router.post('/local-login', async (req, res) => {
   try {
     const { email, name, isGuest } = req.body;
-    if (!email && !isGuest) return res.status(400).json({ error: 'Email required' });
+
+    // Passwordless account takeover prevention (Phase 1, Item 1)
+    if (!isGuest) {
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(403).json({
+          error: 'Passwordless local login is disabled in production. Please use /api/auth/login or continue as guest.',
+          code: 'PASSWORDLESS_LOGIN_FORBIDDEN'
+        });
+      }
+      if (!email) return res.status(400).json({ error: 'Email required', code: 'INVALID_INPUT' });
+    }
 
     let finalId;
     let userEmail;
     let userName;
 
     if (isGuest) {
-      // If the current session already has an isolated guest ID, reuse it
+      // If current session already has an isolated guest ID, reuse it
       if (req.session?.localUser?.isGuest && req.session?.localUser?.id) {
         finalId = req.session.localUser.id;
         userEmail = req.session.localUser.email;
@@ -185,6 +260,7 @@ router.post('/local-login', async (req, res) => {
         finalId = `guest_${Date.now()}_${guestHex}`;
         userEmail = `${finalId}@guest.vani.ai`;
         userName = name || 'Guest User';
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour expiry
 
         try {
           await prisma.user.create({
@@ -192,7 +268,8 @@ router.post('/local-login', async (req, res) => {
               id: finalId,
               email: userEmail,
               name: userName,
-              passwordHash: 'guest_ephemeral'
+              passwordHash: 'guest_ephemeral',
+              expiresAt
             }
           });
         } catch (dbErr) {
@@ -232,7 +309,7 @@ router.post('/local-login', async (req, res) => {
     res.json({ user });
   } catch (err) {
     console.error('[Auth Local Login Error]:', err.message);
-    res.status(500).json({ error: 'Local login initialization failed', details: err.message });
+    res.status(500).json({ error: 'Local login initialization failed', code: 'LOCAL_LOGIN_FAILED' });
   }
 });
 
@@ -279,6 +356,15 @@ router.post('/set-key', requireAuth, async (req, res) => {
       ? `${trimmed.substring(0, 4)}••••${trimmed.substring(trimmed.length - 4)}`
       : '••••••••';
 
+    // Structured Audit Log (Phase 1, Item 12)
+    console.log(JSON.stringify({
+      audit: true,
+      event: 'API_KEY_SET',
+      userId: req.authUser.id,
+      provider: targetProvider,
+      timestamp: new Date().toISOString()
+    }));
+
     res.json({ 
       success: true, 
       message: `${targetProvider.toUpperCase()} key configured successfully.`, 
@@ -304,6 +390,16 @@ router.post('/clear-key', requireAuth, async (req, res) => {
         provider: targetProvider
       }
     });
+
+    // Structured Audit Log (Phase 1, Item 12)
+    console.log(JSON.stringify({
+      audit: true,
+      event: 'API_KEY_CLEARED',
+      userId: req.authUser.id,
+      provider: targetProvider,
+      timestamp: new Date().toISOString()
+    }));
+
     res.json({ success: true, provider: targetProvider });
   } catch (err) {
     console.error('Clear key error:', err);
@@ -391,9 +487,11 @@ router.get('/status', async (req, res) => {
 // POST /api/auth/forgot-password
 router.post('/forgot-password', async (req, res) => {
   const { email } = req.body;
-  if (!email) return res.status(400).json({ error: 'Email is required' });
+  if (!email) return res.status(400).json({ error: 'Email is required', code: 'INVALID_INPUT' });
 
-  const user = await prisma.user.findUnique({ where: { email } });
+  const cleanEmail = email.trim().toLowerCase();
+
+  const user = await prisma.user.findUnique({ where: { email: cleanEmail } });
   if (!user) {
     // Return generic success to prevent email enumeration
     return res.json({ message: 'If an account with that email exists, a reset link has been sent.' });
@@ -405,16 +503,16 @@ router.post('/forgot-password', async (req, res) => {
   const expiry = new Date(Date.now() + 3600000); // 1 hour
 
   await prisma.user.update({
-    where: { email },
+    where: { email: cleanEmail },
     data: {
       resetToken: hashedToken,
       resetTokenExpiry: expiry
     }
   });
 
-  const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}&email=${email}`;
+  // URL-encode reset links (Phase 1, Item 6)
+  const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${encodeURIComponent(resetToken)}&email=${encodeURIComponent(cleanEmail)}`;
   
-  // Since there's no email service configured, we log it to the server console for now
   console.log('===================================================');
   console.log('PASSWORD RESET LINK REQUESTED:');
   console.log(resetUrl);
@@ -426,33 +524,44 @@ router.post('/forgot-password', async (req, res) => {
 // POST /api/auth/reset-password
 router.post('/reset-password', async (req, res) => {
   const { token, email, newPassword } = req.body;
-  if (!token || !email || !newPassword) return res.status(400).json({ error: 'Missing required fields' });
-  if (newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  if (!token || !email || !newPassword) return res.status(400).json({ error: 'Missing required fields', code: 'INVALID_INPUT' });
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  // Password policy: min 10 characters (Phase 1, Item 6)
+  if (newPassword.length < 10) {
+    return res.status(400).json({ error: 'Password must be at least 10 characters long.', code: 'WEAK_PASSWORD' });
+  }
 
   const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
   
   const user = await prisma.user.findFirst({
     where: {
-      email,
+      email: cleanEmail,
       resetToken: hashedToken,
       resetTokenExpiry: { gt: new Date() }
     }
   });
 
   if (!user) {
-    return res.status(400).json({ error: 'Invalid or expired reset token' });
+    return res.status(400).json({ error: 'Invalid or expired reset token', code: 'INVALID_TOKEN' });
   }
 
   const newPasswordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
 
   await prisma.user.update({
-    where: { email },
+    where: { email: cleanEmail },
     data: {
       passwordHash: newPasswordHash,
       resetToken: null,
       resetTokenExpiry: null
     }
   });
+
+  // Invalidate current session on password reset
+  if (req.session && typeof req.session.destroy === 'function') {
+    req.session.destroy(() => {});
+  }
 
   res.json({ message: 'Password has been successfully reset' });
 });

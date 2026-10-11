@@ -34,6 +34,21 @@ vi.mock('../lib/prisma.js', () => ({
       create: vi.fn(),
       upsert: vi.fn(),
     },
+    chatSession: {
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    agentRun: {
+      findFirst: vi.fn(),
+    },
+    session: {
+      findUnique: vi.fn(),
+      upsert: vi.fn(),
+      deleteMany: vi.fn(),
+      updateMany: vi.fn(),
+    },
     projectMemory: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
@@ -220,4 +235,88 @@ describe('Security & IDOR Prevention Tests', () => {
       expect(sanitized).toContain('[REDACTED_UNTRUSTED_INSTRUCTION]');
     });
   });
+
+  describe('Phase 1 P0 Security Regressions', () => {
+    it('Item 1: rejects passwordless email login in production (prevents account takeover)', async () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        const res = await request(app)
+          .post('/api/auth/local-login')
+          .send({ email: 'victim@example.com' });
+
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe('PASSWORDLESS_LOGIN_FORBIDDEN');
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+      }
+    });
+
+    it('Item 2: anonymous callers never receive server-owned API keys', async () => {
+      const { resolveUserApiKeys } = await import('../routes/ai.js');
+      const req = { user: null, session: null };
+      const keys = await resolveUserApiKeys(req);
+
+      expect(keys.sarvamKey).toBeNull();
+      expect(keys.openaiKey).toBeNull();
+      expect(keys.geminiKey).toBeNull();
+      expect(keys.tinyfishKey).toBeNull();
+    });
+
+    it('Item 3: POST /api/ai/chat returns 401 when projectId is supplied by unauthenticated caller', async () => {
+      const res = await request(app)
+        .post('/api/ai/chat')
+        .send({
+          prompt: 'Create BRD',
+          projectId: 'proj_unverified'
+        });
+
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe('UNAUTHORIZED');
+    });
+
+    it('Item 3: POST /api/voice/command returns 401 when projectId is supplied by unauthenticated caller', async () => {
+      const res = await request(app)
+        .post('/api/voice/command')
+        .send({
+          transcript: 'Create BRD',
+          projectId: 'proj_unverified'
+        });
+
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe('UNAUTHORIZED');
+    });
+
+    it('Item 4: GET /api/ai/session/:sessionId/state returns 404 on ownership mismatch to prevent enumeration', async () => {
+      prisma.chatSession.findUnique.mockResolvedValue({
+        id: 'session_of_user_b',
+        userId: 'user_b_id',
+        title: 'Secret Session',
+        messages: [],
+        scheduledActions: [],
+        project: null
+      });
+
+      const agent = request.agent(app);
+      await agent.post('/api/auth/local-login').send({
+        email: 'usera@example.com',
+        name: 'User A'
+      });
+
+      const res = await agent.get('/api/ai/session/session_of_user_b/state');
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe('SESSION_NOT_FOUND');
+    });
+
+    it('Item 12: encryptKey produces v1: prefix and decryptKey supports both v1 and legacy formats', async () => {
+      const { encryptKey, decryptKey } = await import('../lib/crypto.js');
+      const plain = 'sk_test_secret_api_key_12345';
+      const encrypted = encryptKey(plain);
+
+      expect(encrypted.startsWith('v1:')).toBe(true);
+      const decrypted = decryptKey(encrypted);
+      expect(decrypted).toBe(plain);
+    });
+  });
 });
+

@@ -14,6 +14,17 @@ const router = express.Router();
  */
 export const resolveUserApiKeys = async (req) => {
   const user = getAuthUser(req);
+
+  // Cost-bearing protection (Phase 1, Item 2): NEVER fall back to server keys for anonymous callers
+  if (!user || !user.id) {
+    return {
+      sarvamKey: null,
+      openaiKey: null,
+      geminiKey: null,
+      tinyfishKey: null
+    };
+  }
+
   const keys = {
     sarvamKey: process.env.SARVAM_API_KEY,
     openaiKey: process.env.OPENAI_API_KEY,
@@ -88,8 +99,14 @@ router.post('/chat', async (req, res) => {
 
     const authUser = getAuthUser(req);
 
-    // If projectId provided, verify ownership server-side
-    if (projectId && authUser && authUser.id) {
+    // Mandatory ownership verification whenever projectId is present (Phase 1, Item 3)
+    if (projectId) {
+      if (!authUser || !authUser.id) {
+        return res.status(401).json({
+          error: 'Authentication required when accessing project resources.',
+          code: 'UNAUTHORIZED'
+        });
+      }
       try {
         await verifyProjectOwnership(projectId, authUser.id);
       } catch (authErr) {
@@ -177,7 +194,17 @@ router.post('/orchestrate-stream', async (req, res) => {
 
     const authUser = getAuthUser(req);
 
-    if (projectId && authUser && authUser.id) {
+    // Mandatory ownership verification whenever projectId is present (Phase 1, Item 3)
+    if (projectId) {
+      if (!authUser || !authUser.id) {
+        res.write(`data: ${JSON.stringify({ 
+          type: 'error', 
+          error: 'Authentication required when accessing project resources.', 
+          code: 'UNAUTHORIZED' 
+        })}\n\n`);
+        res.end();
+        return;
+      }
       try {
         await verifyProjectOwnership(projectId, authUser.id);
       } catch (authErr) {
@@ -292,12 +319,9 @@ router.get('/session/:sessionId/state', requireAuth, async (req, res) => {
       }
     });
 
-    if (!session) {
-      return res.status(404).json({ error: 'Session not found' });
-    }
-
-    if (session.userId !== authUser.id) {
-      return res.status(403).json({ error: 'Forbidden: Access denied to this session' });
+    // IDOR protection: return 404 on session mismatch or not found (Phase 1, Item 4)
+    if (!session || session.userId !== authUser.id) {
+      return res.status(404).json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' });
     }
 
     const latestRun = await prisma.agentRun.findFirst({
@@ -342,7 +366,7 @@ router.get('/session/:sessionId/state', requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error('[AI API] Session state error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Failed to retrieve session state', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 

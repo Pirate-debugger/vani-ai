@@ -37,18 +37,32 @@ describe('Auth Routes', () => {
       prisma.user.create.mockResolvedValue({ id: 1, name: 'Test', email: 'test@test.com' });
 
       const res = await request(app).post('/api/auth/register').send({
-        name: 'Test', email: 'test@test.com', password: 'password123'
+        name: 'Test', email: 'test@test.com', password: 'StrongPassword2026!'
       });
 
       expect(res.status).toBe(201);
       expect(res.body.user.email).toBe('test@test.com');
     });
 
+    it('rejects short or common password', async () => {
+      const resShort = await request(app).post('/api/auth/register').send({
+        name: 'Test', email: 'test@test.com', password: 'short'
+      });
+      expect(resShort.status).toBe(400);
+      expect(resShort.body.code).toBe('WEAK_PASSWORD');
+
+      const resCommon = await request(app).post('/api/auth/register').send({
+        name: 'Test', email: 'test@test.com', password: 'password123'
+      });
+      expect(resCommon.status).toBe(400);
+      expect(resCommon.body.code).toBe('WEAK_PASSWORD');
+    });
+
     it('duplicate email rejection', async () => {
       prisma.user.findUnique.mockResolvedValue({ id: 1, email: 'test@test.com' });
 
       const res = await request(app).post('/api/auth/register').send({
-        name: 'Test', email: 'test@test.com', password: 'password123'
+        name: 'Test', email: 'test@test.com', password: 'StrongPassword2026!'
       });
 
       expect(res.status).toBe(409);
@@ -68,34 +82,36 @@ describe('Auth Routes', () => {
       bcrypt.compare.mockResolvedValue(true);
 
       const res = await request(app).post('/api/auth/login').send({
-        email: 'test@test.com', password: 'password123'
+        email: 'test@test.com', password: 'StrongPassword2026!'
       });
 
       expect(res.status).toBe(200);
       expect(res.body.user.email).toBe('test@test.com');
     });
 
-    it('wrong password', async () => {
+    it('wrong password returns generic error', async () => {
       prisma.user.findUnique.mockResolvedValue({ id: 1, email: 'test@test.com', passwordHash: 'hash' });
       bcrypt.compare.mockResolvedValue(false);
 
       const res = await request(app).post('/api/auth/login').send({
-        email: 'test@test.com', password: 'wrong'
+        email: 'test@test.com', password: 'WrongPassword2026!'
       });
 
       expect(res.status).toBe(401);
-      expect(res.body.error).toMatch(/Incorrect password/i);
+      expect(res.body.error).toBe('Invalid email or password.');
+      expect(res.body.code).toBe('INVALID_CREDENTIALS');
     });
 
-    it('unknown email', async () => {
+    it('unknown email returns generic error', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
       const res = await request(app).post('/api/auth/login').send({
-        email: 'unknown@test.com', password: 'password'
+        email: 'unknown@test.com', password: 'StrongPassword2026!'
       });
 
       expect(res.status).toBe(401);
-      expect(res.body.error).toMatch(/No account found/i);
+      expect(res.body.error).toBe('Invalid email or password.');
+      expect(res.body.code).toBe('INVALID_CREDENTIALS');
     });
   });
 
