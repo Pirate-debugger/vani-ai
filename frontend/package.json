@@ -12,7 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@ricky0123/vad-web": "^0.0.18",
+    "@ricky0123/vad-web": "^0.0.31",
     "axios": "^1.6.8",
     "canvas-confetti": "^1.9.3",
     "lucide-react": "^0.378.0",
