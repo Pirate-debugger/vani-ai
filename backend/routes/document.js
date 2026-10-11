@@ -3,6 +3,7 @@ import prisma from '../lib/prisma.js';
 import { requireAuth, verifyDocumentOwnership } from '../middleware/auth.js';
 import { orchestrate } from '../services/orchestrator.js';
 import { decryptKey } from '../lib/crypto.js';
+import { auditDocumentQuality } from '../services/reviewerService.js';
 
 const router = express.Router();
 
@@ -298,6 +299,47 @@ router.post('/:id/versions', requireAuth, async (req, res) => {
       code: error.code || 'VERSION_CREATE_FAILED'
     });
   }
+});
+
+// POST /api/document/:id/audit
+// Run quality critic audit pass on an existing document
+router.post('/:id/audit', requireAuth, async (req, res) => {
+  try {
+    const documentId = req.params.id;
+    const existing = await verifyDocumentOwnership(documentId, req.authUser.id);
+
+    let parsedMetadata = {};
+    if (typeof existing.metadata === 'string') {
+      try { parsedMetadata = JSON.parse(existing.metadata); } catch {}
+    } else if (existing.metadata) {
+      parsedMetadata = existing.metadata;
+    }
+
+    const audit = auditDocumentQuality(existing.content, parsedMetadata);
+    res.json({
+      documentId: existing.id,
+      title: existing.title,
+      type: existing.type,
+      audit
+    });
+  } catch (error) {
+    res.status(error.status || 500).json({
+      error: error.message || 'Failed to audit document',
+      code: error.code || 'AUDIT_FAILED'
+    });
+  }
+});
+
+// POST /api/document/audit
+// Ad-hoc quality audit on raw markdown / draft text
+router.post('/audit', requireAuth, (req, res) => {
+  const { content, metadata = {} } = req.body;
+  if (!content || typeof content !== 'string') {
+    return res.status(400).json({ error: 'Document content string is required for audit.' });
+  }
+
+  const audit = auditDocumentQuality(content, metadata);
+  res.json({ audit });
 });
 
 export default router;

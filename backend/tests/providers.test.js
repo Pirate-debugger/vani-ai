@@ -136,9 +136,9 @@ describe('Centralized AI Provider Layer', () => {
   });
 
   describe('Agent Registry', () => {
-    it('registers all 19 canonical business & workflow agents', () => {
+    it('registers all 26 canonical and startup business agents', () => {
       const agents = listAgents();
-      expect(agents.length).toBe(19);
+      expect(agents.length).toBe(26);
       const agentIds = agents.map(a => a.id);
       expect(agentIds).toContain('brd');
       expect(agentIds).toContain('prd');
@@ -159,6 +159,14 @@ describe('Centralized AI Provider Layer', () => {
       expect(agentIds).toContain('general');
       expect(agentIds).toContain('build');
       expect(agentIds).toContain('plan');
+      // Phase 3 startup agents
+      expect(agentIds).toContain('pitch_deck');
+      expect(agentIds).toContain('financial_model');
+      expect(agentIds).toContain('gtm_plan');
+      expect(agentIds).toContain('lean_canvas');
+      expect(agentIds).toContain('investor_mock_pitch');
+      expect(agentIds).toContain('reviewer_critic');
+      expect(agentIds).toContain('india_compliance');
     });
 
     it('retrieves agent definition with required capabilities and preferred provider', () => {

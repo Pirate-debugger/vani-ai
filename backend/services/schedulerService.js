@@ -16,7 +16,9 @@ export function parseTemporalIntent(text, defaultTimezone = 'Asia/Kolkata') {
   const lower = trimmed.toLowerCase();
 
   let actionType = 'research';
-  if (lower.includes('remind') || lower.includes('reminder') || lower.includes('revise')) {
+  if (lower.includes('competitor watch') || lower.includes('monitor competitor') || lower.includes('track competitor') || (lower.includes('competitor') && lower.includes('monitor'))) {
+    actionType = 'competitor_watch';
+  } else if (lower.includes('remind') || lower.includes('reminder') || lower.includes('revise')) {
     actionType = 'reminder';
   } else if (lower.includes('brd') || lower.includes('business requirement')) {
     actionType = 'brd';
@@ -435,6 +437,49 @@ export async function executeScheduledAction(actionId, { isManualRun = false } =
         tasksCreated: docRes?.tasks?.length || 0,
         executedAt: new Date().toISOString()
       };
+    } else if (action.actionType === 'competitor_watch') {
+      const orchestrateRes = await orchestrate({
+        prompt: payload.prompt || `Monitor competitor offerings, pricing changes, and market shifts for: ${action.title}`,
+        agentType: 'research',
+        projectId: action.projectId,
+        userId: action.userId,
+        requestId: `watch_${action.id}_${Date.now()}`
+      });
+
+      const currentContent = orchestrateRes?.response || '';
+      let hasDiff = false;
+      let diffSummary = 'Initial competitor benchmark established.';
+
+      if (action.lastResult) {
+        try {
+          const prev = JSON.parse(action.lastResult);
+          if (prev.summary && prev.summary !== currentContent.slice(0, 500)) {
+            hasDiff = true;
+            diffSummary = `Competitor update detected: Changes observed in pricing or features compared to previous check.`;
+          }
+        } catch {}
+      }
+
+      executionResult = {
+        summary: currentContent.slice(0, 500),
+        diffDetected: hasDiff,
+        diffSummary,
+        sources: orchestrateRes?.sources || [],
+        executedAt: new Date().toISOString()
+      };
+
+      if (action.projectId) {
+        await prisma.projectMemory.create({
+          data: {
+            projectId: action.projectId,
+            type: hasDiff ? 'decision' : 'knowledge',
+            title: hasDiff ? `🚨 Competitor Alert: ${action.title}` : `Competitor Benchmark: ${action.title}`,
+            content: `${diffSummary}\n\n${currentContent.slice(0, 1000)}`,
+            category: 'competitor_watch',
+            confidence: 'high'
+          }
+        });
+      }
     } else {
       // General custom execution
       executionResult = {

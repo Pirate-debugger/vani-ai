@@ -64,13 +64,26 @@ USER VOICE COMMAND
 | Category | Capability | Technology |
 |---|---|---|
 | 🎙️ **Voice First** | Speech recognition in Indian accents & dialects | Sarvam Saaras v4 ASR |
-| 🔊 **Voice Feedback** | Natural regional voice output (<350 chars) | Sarvam Bulbul v2 TTS |
+| 🔊 **Voice Feedback** | Natural regional voice output (<350 chars) | Sarvam Bulbul v3 TTS |
 | 🌐 **Live Web Intelligence** | Real-time competitor pricing, market signals & web scraping | TinyFish TypeScript SDK (`@tiny-fish/sdk`) |
-| 📋 **BRD Generation** | 29-section enterprise Business Requirements Document | Gemini 2.0/3.8 Flash / OpenAI GPT-4o |
+| 📋 **BRD & Deliverables** | 29-section BRDs, PRDs, Pitch Decks, Financial Models, GTM Plans | Gemini 2.0/3.8 Flash / OpenAI GPT-4o |
+| 🔍 **Critic & Reviewer** | Autonomous audit engine checking completeness, consistency & gaps | Deterministic Critic Service |
+| 🔌 **MCP & Integrations** | Model Context Protocol client, GitHub task sync, Slack alerts | JSON-RPC 2.0 MCP Client |
 | 🎯 **Task Extraction** | Deduplicated high/medium/low priority action items | Deterministic Task Extractor |
 | 🔒 **Enterprise Security** | IDOR prevention, project ownership verification, safe errors | Express middleware + AES-256-GCM |
+| 🗄️ **Dual Database** | Dynamic PostgreSQL (`@prisma/adapter-pg`) & SQLite (`better-sqlite3`) | Prisma 7 Dynamic Adapter |
 | 🔀 **Bridge / Interpreter** | Live bilingual voice bridge (e.g. Hindi ⇄ Tamil) | Sarvam Mayura v1 Translation |
+| 🇮🇳 **Indic Typography** | Noto Sans Devanagari, Tamil, Telugu font stacks | Google Fonts Indic Stack |
 | 🌙 **Cyberpunk UI** | Dark glassmorphism, responsive TaskBoard & DocumentViewer | Tailwind CSS + Lucide React |
+
+---
+
+## 📚 Technical Documentation
+- [Architecture & Diagrams](file:///e:/ANTIGRVITY/vani%20ai/docs/ARCHITECTURE.md)
+- [API Reference (OpenAPI 3.1)](file:///e:/ANTIGRVITY/vani%20ai/docs/API.md)
+- [Security Policy & Controls](file:///e:/ANTIGRVITY/vani%20ai/docs/SECURITY.md)
+- [Baseline Audit](file:///e:/ANTIGRVITY/vani%20ai/docs/BASELINE.md)
+- [90-Second Demo Script](file:///e:/ANTIGRVITY/vani%20ai/docs/DEMO_SCRIPT.md)
 
 ---
 

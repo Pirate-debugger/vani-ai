@@ -291,7 +291,7 @@ router.post('/local-login', async (req, res) => {
             }
           });
         }
-        finalId = dbUser.id;
+        finalId = dbUser?.id || userEmail.replace(/[^a-zA-Z0-9_]/g, '_');
       } catch (dbErr) {
         console.warn('[Auth Local Login] User fetch/create warn:', dbErr.message);
         finalId = userEmail.replace(/[^a-zA-Z0-9_]/g, '_');

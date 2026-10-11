@@ -207,6 +207,54 @@ Return the output STRICTLY as a JSON object with schema:
   "summary": "String",
   "content": "Markdown string containing: Executive Summary, Market Statistics, Competitor Analysis, Key Research Findings, Strategic Recommendations, Sources & Citations",
   "metadata": { "researchUsed": true, "confidence": "high", "missingInformation": [], "sources": [] }
+}`,
+  pitch_deck: `You are a Principal Venture Capital Pitch Architect. Generate a compelling 12-slide Pitch Deck Outline with Speaker Notes.
+Return the output STRICTLY as a JSON object with schema:
+{
+  "title": "Pitch Deck: [Startup Name]",
+  "summary": "String",
+  "content": "Markdown string containing 12 slides: Slide 1: Title & One-liner, Slide 2: The Problem, Slide 3: The Solution & Demo Cues, Slide 4: Market Size (TAM/SAM/SOM), Slide 5: Product & Secret Sauce, Slide 6: Business Model & Pricing, Slide 7: Traction & Milestones, Slide 8: Go-To-Market & Growth Engines, Slide 9: Competitive Landscape & Moat, Slide 10: Financial Projections (3 Years), Slide 11: Team, Slide 12: The Ask & Use of Funds. Each slide MUST include: Slide Headline, Core Bullets, Visual/Diagram Suggestion, and Exact Verbatim Speaker Script for the presenter.",
+  "metadata": { "researchUsed": false, "confidence": "high", "missingInformation": [], "sources": [] }
+}`,
+  financial_model: `You are a Chief Financial Officer & Startup Financial Modeling Expert. Build a detailed Unit Economics and Financial Model.
+Return the output STRICTLY as a JSON object with schema:
+{
+  "title": "Financial Model: [Startup Name]",
+  "summary": "String",
+  "content": "Markdown string containing: # Financial Model & Unit Economics\\n## 1. Unit Economics (CAC, LTV, LTV/CAC ratio, Payback Period, Gross Margin %)\\n## 2. Market Sizing (TAM in INR/USD, SAM, SOM calculation methodology)\\n## 3. Revenue Model & Pricing Tiers (freemium/subscription/commission/UPI payment charges)\\n## 4. Cost Structure (COGS, Cloud/Server Hosting, LLM API costs, Marketing, Headcount)\\n## 5. 3-Year Projections Table (Year 1, Year 2, Year 3: Users, Revenue, Expenses, Burn Rate, Net Margin)\\n## 6. Breakeven Analysis & Key Milestones",
+  "metadata": { "researchUsed": false, "confidence": "high", "missingInformation": [], "sources": [] }
+}`,
+  gtm_plan: `You are a Chief Marketing Officer & India GTM Growth Strategist. Build an actionable India Go-To-Market Plan.
+Return the output STRICTLY as a JSON object with schema:
+{
+  "title": "Go-To-Market Plan: [Startup Name]",
+  "summary": "String",
+  "content": "Markdown string containing: # India Go-To-Market Playbook\\n## 1. Ideal Customer Profile (ICP) & Beachhead Market\\n## 2. Positioning & Indian Value Proposition (Bharat vs India 1/2)\\n## 3. Distribution Channels (WhatsApp Community Growth, LinkedIn Founder-Led, Hyperlocal Partnerships, College Ambassadors)\\n## 4. Indian Pricing Strategy (Micro-transactions, UPI AutoPay, Pilot Pricing, GST considerations)\\n## 5. 90-Day Launch Sprint Plan (Days 1-30: Pre-launch, Days 31-60: Beta, Days 61-90: Scale)\\n## 6. North Star Metric & Weekly Growth Targets",
+  "metadata": { "researchUsed": false, "confidence": "high", "missingInformation": [], "sources": [] }
+}`,
+  lean_canvas: `You are a Lean Startup Coach. Generate a comprehensive 1-page Lean Canvas based on Ash Maurya's framework.
+Return the output STRICTLY as a JSON object with schema:
+{
+  "title": "Lean Canvas: [Startup Name]",
+  "summary": "String",
+  "content": "Markdown string formatted into 9 distinct modules: ## 1. Problem (Top 3 problems & existing alternatives)\\n## 2. Customer Segments (Target users & early adopters)\\n## 3. Unique Value Proposition (Clear, compelling message)\\n## 4. Solution (Top 3 features solving the problem)\\n## 5. Channels (Paths to customers)\\n## 6. Revenue Streams (Pricing model, margins)\\n## 7. Cost Structure (Fixed & variable costs)\\n## 8. Key Metrics (Key activities you measure)\\n## 9. Unfair Advantage (Can't be easily copied or bought)",
+  "metadata": { "researchUsed": false, "confidence": "high", "missingInformation": [], "sources": [] }
+}`,
+  reviewer_critic: `You are a Senior Venture Partner & Quality Auditor. Perform an adversarial and rigorous review of the startup's document.
+Return the output STRICTLY as a JSON object with schema:
+{
+  "title": "Audit Review: [Document Title]",
+  "summary": "String summary of overall quality score (e.g. 84/100) and top strengths/risks",
+  "content": "Markdown string containing: # Comprehensive Document Quality Audit\\n## Overall Quality Score: [X/100]\\n## 1. Completeness & Structural Coverage\\n## 2. Internal Consistency Check (Do Functional Requirements align with NFRs, Business Objectives, and KPIs?)\\n## 3. Unsupported Claims & Feasibility Gaps\\n## 4. India Market Gaps (GST/regulatory readiness, vernacular accessibility, payment friction)\\n## 5. Actionable Fix Recommendations (Prioritized Top 5 immediate changes needed)",
+  "metadata": { "researchUsed": false, "confidence": "high", "missingInformation": [], "sources": [] }
+}`,
+  india_compliance: `You are a Chartered Accountant & Indian Startup Legal/Regulatory Expert.
+Return the output STRICTLY as a JSON object with schema:
+{
+  "title": "India Startup Compliance & Setup Checklist",
+  "summary": "String",
+  "content": "Markdown string containing: # India Regulatory & Startup Compliance Guide\\n## 1. Entity Formation (Pvt Ltd vs LLP pros/cons)\\n## 2. DPIIT Startup India Recognition & 80-IAC Tax Exemption Checklist\\n## 3. GST Registration & Threshold Rules for Tech/SaaS\\n## 4. Udyam MSME Registration Benefits\\n## 5. Digital Personal Data Protection (DPDP) Act 2023 Compliance\\n## 6. Payment Gateway Integration (Razorpay, Cashfree, UPI AutoPay requirements)\\n## 7. Startup India Seed Fund Scheme (SISFS) & Grant Eligibility",
+  "metadata": { "researchUsed": false, "confidence": "high", "missingInformation": [], "sources": [] }
 }`
 };
 
@@ -335,6 +383,9 @@ export const identifyAgentIntent = async (userPrompt, apiKeys) => {
   const p = (userPrompt || '').toLowerCase();
 
   // Fast deterministic heuristics for high-intent queries
+  if (p.includes('audit document') || p.includes('review document') || p.includes('critique') || p.includes('review brd') || p.includes('review prd') || p.includes('audit brd')) {
+    return 'reviewer_critic';
+  }
   if (p.includes('brd') || (p.includes('business requirement') && !p.includes('task'))) {
     return 'brd';
   }
@@ -355,6 +406,27 @@ export const identifyAgentIntent = async (userPrompt, apiKeys) => {
   }
   if (p.includes('research') && !p.includes('brd') && !p.includes('prd') && !p.includes('build')) {
     return 'research';
+  }
+  if (p.includes('pitch deck') || p.includes('investor deck') || p.includes('speaker notes')) {
+    return 'pitch_deck';
+  }
+  if (p.includes('financial model') || p.includes('unit economics') || p.includes('cac') || p.includes('ltv') || p.includes('revenue projection')) {
+    return 'financial_model';
+  }
+  if (p.includes('gtm') || p.includes('go to market') || p.includes('go-to-market') || p.includes('launch plan')) {
+    return 'gtm_plan';
+  }
+  if (p.includes('lean canvas') || p.includes('one page business model') || p.includes('business model canvas')) {
+    return 'lean_canvas';
+  }
+  if (p.includes('audit document') || p.includes('review document') || p.includes('critique') || p.includes('review brd') || p.includes('review prd')) {
+    return 'reviewer_critic';
+  }
+  if (p.includes('mock pitch') || p.includes('pitch practice') || p.includes('investor interview')) {
+    return 'investor_mock_pitch';
+  }
+  if (p.includes('dpiit') || p.includes('startup india') || p.includes('udyam') || p.includes('gst registration') || p.includes('compliance checklist')) {
+    return 'india_compliance';
   }
 
   // Fast bypass for standard conversational and explanation queries (Rule 8)
