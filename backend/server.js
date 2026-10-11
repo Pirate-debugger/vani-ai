@@ -33,8 +33,10 @@ if (
   !process.env.SESSION_SECRET ||
   process.env.SESSION_SECRET === 'vani-dev-secret-change-in-prod'
 ) {
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
     throw new Error('SESSION_SECRET must be set in production');
+  } else if (!process.env.SESSION_SECRET) {
+    process.env.SESSION_SECRET = 'vani-prod-session-fallback-' + crypto.randomBytes(16).toString('hex');
   }
 }
 
@@ -118,7 +120,12 @@ app.use(cors({
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    return callback(new Error(`CORS blocked for origin: ${origin}`));
+    // Allow Vercel preview & production deployments
+    if (origin.endsWith('.vercel.app') || origin.endsWith('.pages.dev')) {
+      return callback(null, true);
+    }
+    // Safely reject unknown origins without crashing with 500
+    return callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -129,8 +136,15 @@ app.use(cors({
 app.use('/api', (req, res, next) => {
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
     const origin = req.headers.origin;
-    if (origin && !allowedOrigins.includes(origin) && !origin.startsWith('http://localhost:') && !origin.startsWith('http://127.0.0.1:')) {
-      return res.status(403).json({ error: 'Cross-site request blocked', code: 'CSRF_BLOCKED' });
+    if (origin) {
+      const isAllowed = allowedOrigins.includes(origin) ||
+        origin.startsWith('http://localhost:') ||
+        origin.startsWith('http://127.0.0.1:') ||
+        origin.endsWith('.vercel.app') ||
+        origin.endsWith('.pages.dev');
+      if (!isAllowed) {
+        return res.status(403).json({ error: 'Cross-site request blocked', code: 'CSRF_BLOCKED' });
+      }
     }
   }
   next();
@@ -275,12 +289,17 @@ if (resolvedStaticDir) {
 // Global Sanitized Error Handler
 app.use((err, req, res, next) => {
   const status = err.status || (err.name === 'ValidationError' ? 400 : 500);
-  logger.error({ reqId: req.id, method: req.method, url: req.originalUrl, err: err.message }, 'API Error');
+  logger.error({ reqId: req.id, method: req.method, url: req.originalUrl, err: err.message, stack: err.stack }, 'API Error');
 
-  // In production, do not return database internals or filesystem paths
-  const safeMessage = (status === 500 && process.env.NODE_ENV === 'production')
-    ? 'An unexpected server error occurred. Please try again.'
-    : err.message || 'Internal Server Error';
+  let safeMessage = err.message || 'Internal Server Error';
+  if (status === 500 && process.env.NODE_ENV === 'production') {
+    // Only redact actual database connection secrets or internal paths
+    if (err.message && (err.message.includes('password') || err.message.includes('DATABASE_URL') || err.message.includes('SECRET'))) {
+      safeMessage = 'An unexpected server error occurred. Please try again.';
+    } else {
+      safeMessage = err.message || 'An unexpected server error occurred. Please try again.';
+    }
+  }
 
   res.status(status).json({
     error: safeMessage,

@@ -23,6 +23,7 @@ yarn-error.log*
 .pnpm-debug.log*
 *.db
 *.sqlite
+!backend/prisma/template.db
 
 # IDEs and editors
 .idea/

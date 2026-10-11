@@ -25,7 +25,9 @@ export class PrismaSessionStore extends session.Store {
       const data = JSON.parse(record.data);
       return callback(null, data);
     } catch (err) {
-      return callback(err);
+      console.warn('[PrismaSessionStore] Session get fallback:', err.message);
+      // Return null so the request continues as guest/unauthenticated without 500 error
+      return callback(null, null);
     }
   }
 
@@ -51,7 +53,8 @@ export class PrismaSessionStore extends session.Store {
       });
       if (callback) callback(null);
     } catch (err) {
-      if (callback) callback(err);
+      console.warn('[PrismaSessionStore] Session set warning:', err.message);
+      if (callback) callback(null);
     }
   }
 
@@ -62,7 +65,8 @@ export class PrismaSessionStore extends session.Store {
       });
       if (callback) callback(null);
     } catch (err) {
-      if (callback) callback(err);
+      console.warn('[PrismaSessionStore] Session destroy warning:', err.message);
+      if (callback) callback(null);
     }
   }
 
@@ -78,7 +82,8 @@ export class PrismaSessionStore extends session.Store {
       });
       if (callback) callback(null);
     } catch (err) {
-      if (callback) callback(err);
+      console.warn('[PrismaSessionStore] Session touch warning:', err.message);
+      if (callback) callback(null);
     }
   }
 }

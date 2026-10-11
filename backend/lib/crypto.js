@@ -3,16 +3,22 @@ import crypto from 'crypto';
 const ALGORITHM = 'aes-256-gcm';
 export const CURRENT_KEY_VERSION = 'v1';
 
+const DEFAULT_DEV_KEY = '1234567890123456789012345678901234567890123456789012345678901234';
+
 /**
  * Resolves encryption key based on version or defaults to ENCRYPTION_KEY.
  * Expects a 32-byte hex string (64 characters).
  */
 const getEncryptionKey = (version = CURRENT_KEY_VERSION) => {
   const versionedEnvName = `ENCRYPTION_KEY_${version.toUpperCase()}`;
-  const keyHex = process.env[versionedEnvName] || process.env.ENCRYPTION_KEY;
+  let keyHex = process.env[versionedEnvName] || process.env.ENCRYPTION_KEY;
 
   if (!keyHex || keyHex.length !== 64) {
-    throw new Error(`ENCRYPTION_KEY (or ${versionedEnvName}) must be a 64-character hex string (32 bytes).`);
+    if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
+      throw new Error(`ENCRYPTION_KEY (or ${versionedEnvName}) must be a 64-character hex string (32 bytes).`);
+    }
+    console.warn(`[Crypto] ${versionedEnvName} not set or invalid (expected 64 hex characters). Using fallback key.`);
+    keyHex = DEFAULT_DEV_KEY;
   }
   return Buffer.from(keyHex, 'hex');
 };

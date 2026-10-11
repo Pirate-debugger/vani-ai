@@ -34,21 +34,30 @@ if (isPostgres) {
       const tmpDbPath = '/tmp/dev.db';
       if (!fs.existsSync(tmpDbPath)) {
         try {
-          const templateDbPath = path.join(__dirname, '..', 'prisma', 'dev.db');
-          if (fs.existsSync(templateDbPath)) {
-            fs.copyFileSync(templateDbPath, tmpDbPath);
+          const templateDbPath = path.join(__dirname, '..', 'prisma', 'template.db');
+          const devDbPath = path.join(__dirname, '..', 'prisma', 'dev.db');
+          const sourceDb = fs.existsSync(templateDbPath) ? templateDbPath : (fs.existsSync(devDbPath) ? devDbPath : null);
+          if (sourceDb) {
+            fs.copyFileSync(sourceDb, tmpDbPath);
             fs.chmodSync(tmpDbPath, 0o666);
           } else {
             fs.writeFileSync(tmpDbPath, '');
           }
         } catch (err) {
-          console.error('Failed to copy SQLite database to /tmp:', err);
+          console.error('[Prisma] Failed to copy SQLite database to /tmp:', err);
         }
       }
       url = `file:${tmpDbPath}`;
     } else {
-      if (!url.startsWith('file:')) {
-        url = `file:${url}`;
+      // Resolve relative file paths to absolute path inside backend/prisma
+      if (url.startsWith('file:./') || url.startsWith('file:prisma/') || url.includes('/prisma/') || url.includes('\\prisma\\')) {
+        const cleanPath = url.replace(/^file:/, '');
+        const filename = path.basename(cleanPath) || 'dev.db';
+        const resolvedPath = path.resolve(__dirname, '..', 'prisma', filename);
+        url = `file:${resolvedPath}`;
+      } else if (!url.startsWith('file:') && !url.startsWith('/')) {
+        const resolvedPath = path.resolve(__dirname, '..', 'prisma', path.basename(url) || 'dev.db');
+        url = `file:${resolvedPath}`;
       }
     }
     adapter = new PrismaBetterSqlite3({ url });
