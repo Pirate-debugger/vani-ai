@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+import { apiFetch } from '../lib/api';
 
 const MAX_RECORDING_MS = 30000; // Configurable safety limit: 30 seconds for long input
 const SILENCE_TIMEOUT_MS = 1600; // ~1.6s silence triggers auto-stop
@@ -19,6 +18,7 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
   const [voiceState, setVoiceState]     = useState('idle'); // 'idle' | 'pressing' | 'listening' | 'finalizing' | 'transcribing' | 'routing' | 'thinking' | 'researching' | 'executing' | 'speaking' | 'error'
   const [talkMode, setTalkMode]         = useState('tap'); // 'tap' | 'hold' | 'hands_free'
   const [voiceSession, setVoiceSession] = useState(null);
+  const [micError, setMicError]         = useState(null);
 
   const voiceSessionRef  = useRef(null);
   const maxTimerRef      = useRef(null);
@@ -136,7 +136,7 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
       const ext = (mimeType || 'audio/webm').split('/')[1]?.split(';')[0] || 'webm';
       formData.append('file', blob, `audio.${ext}`);
       formData.append('language_code', languageCode);
-      const res = await fetch(`${API_BASE}/voice/stt`, { method: 'POST', credentials: 'include', body: formData });
+      const res = await apiFetch('/voice/stt', { method: 'POST', body: formData });
       if (!res.ok) throw new Error(`STT API error: ${res.status}`);
       const data = await res.json();
       return data.transcript || null;
@@ -151,6 +151,7 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
   // ─── Start Recording (with haptic, TTS cancel & safety timers) ─────────────────
   const startRecording = async (activeMode) => {
     cancelSpeech(); // Rule 24: TTS interruption - immediately cancel any active speech
+    setMicError(null);
     navigator.vibrate?.(50); // Short haptic pulse on start
     try {
       setTranscript('');
@@ -287,7 +288,7 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     } catch (err) {
       console.error('Failed to access microphone:', err);
       setVoiceState('error');
-      alert('Microphone access denied or unsupported. Please check device permissions.');
+      setMicError('Microphone access denied or unsupported. Please check device permissions.');
     }
   };
 
@@ -404,10 +405,9 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     if (!text || !text.trim()) { if (callback) callback(); return; }
     setIsSpeaking(true);
     try {
-      const res = await fetch(`${API_BASE}/voice/tts`, {
+      const res = await apiFetch('/voice/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           text: text.substring(0, 500),
           target_language_code: langCode,
@@ -468,10 +468,9 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     cancelSpeech();
 
     try {
-      const response = await fetch(`${API_BASE}/ai/chat-stream`, {
+      const response = await apiFetch('/ai/chat-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ messages, language_code: langCode }),
         signal, // Pass the signal to fetch
       });
@@ -528,9 +527,8 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
       if (projectId) formData.append('projectId', projectId);
       if (lang) formData.append('language_code', lang);
 
-      const res = await fetch(`${API_BASE}/voice/command`, {
+      const res = await apiFetch('/voice/command', {
         method: 'POST',
-        credentials: 'include',
         body: formData
       });
 
@@ -637,6 +635,8 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
     voiceSession,
     talkMode,
     setTalkMode,
+    micError,
+    clearMicError: () => setMicError(null),
     MAX_RECORDING_MS,
     SILENCE_TIMEOUT_MS,
     // Exports for testing

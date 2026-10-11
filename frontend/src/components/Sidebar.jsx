@@ -7,7 +7,7 @@ import {
 import { useChatHistory } from '../context/ChatHistoryContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { CANONICAL_AGENTS } from '../config/canonicalAgents';
-import axios from 'axios';
+import { apiClient } from '../lib/api';
 
 const FAVORITE_AGENT_IDS = ['auto', 'research', 'brd', 'build'];
 
@@ -68,7 +68,7 @@ export default function Sidebar({
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(true);
   const [workOpen, setWorkOpen] = useState(true);
-  const [agentsOpen, setAgentsOpen] = useState(true);
+  const [agentsOpen, setAgentsOpen] = useState(false); // Collapsed by default as requested
   const [allAgentsModalOpen, setAllAgentsModalOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
 
@@ -82,12 +82,25 @@ export default function Sidebar({
 
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
 
+  // Keyboard accessibility: close drawer / modal on Escape
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setMobileOpen(false);
+        setAllAgentsModalOpen(false);
+        setLangOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Fetch projects if not passed via props
   useEffect(() => {
     if (propProjects && propProjects.length > 0) {
       setInternalProjects(propProjects);
     } else {
-      axios.get('/api/projects', { withCredentials: true })
+      apiClient.get('/projects')
         .then(res => {
           if (Array.isArray(res.data)) {
             setInternalProjects(res.data);
@@ -254,7 +267,54 @@ export default function Sidebar({
             </button>
           )}
 
-          {/* ── Section: Projects ─────────────────────────────────────────── */}
+          {/* ── Section 1: Conversations (Recent Chats) ───────────────────── */}
+          {!collapsed && isLoggedIn && (
+            <div className="space-y-1">
+              <button
+                onClick={() => setHistoryOpen(!historyOpen)}
+                className="w-full flex items-center justify-between px-2 py-1.5 text-white/40 hover:text-white/70 transition-colors text-[11px] font-bold uppercase tracking-wider"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Clock size={12} className="text-cyber-purple" />
+                  <span>Conversations</span>
+                  <span className="text-[10px] text-white/20 font-mono">({sessions.length})</span>
+                </div>
+                {historyOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              </button>
+
+              {historyOpen && (
+                <div className="space-y-0.5 pl-1">
+                  {sessions.length === 0 ? (
+                    <p className="text-[10px] text-white/30 py-1 px-2 italic">No conversations yet</p>
+                  ) : (
+                    sessions.slice(0, 8).map(session => (
+                      <div
+                        key={session.id}
+                        onClick={() => handleSessionClick(session)}
+                        className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer text-xs transition-all ${
+                          currentSessionId === session.id
+                            ? 'bg-cyber-purple/20 text-white border border-cyber-purple/30 font-semibold'
+                            : 'text-white/60 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        <span className="truncate flex-1 pr-1">{session.title || 'Chat Session'}</span>
+                        <button
+                          onClick={(e) => handleDeleteClick(e, session.id)}
+                          className={`p-1 transition-all ${
+                            pendingDeleteId === session.id ? 'text-red-400 bg-red-500/10 rounded' : 'opacity-0 group-hover:opacity-100 text-white/20 hover:text-red-400'
+                          }`}
+                        >
+                          {pendingDeleteId === session.id ? <CheckCircle2 size={11} className="text-red-400" /> : <Trash2 size={11} />}
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Section 2: Projects ─────────────────────────────────────────── */}
           {!collapsed && (
             <div className="space-y-1">
               <button
@@ -296,53 +356,6 @@ export default function Sidebar({
                   >
                     <Plus size={12} /> All Projects & Documents
                   </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Section: Recent Chats ─────────────────────────────────────── */}
-          {!collapsed && isLoggedIn && (
-            <div className="space-y-1">
-              <button
-                onClick={() => setHistoryOpen(!historyOpen)}
-                className="w-full flex items-center justify-between px-2 py-1.5 text-white/40 hover:text-white/70 transition-colors text-[11px] font-bold uppercase tracking-wider"
-              >
-                <div className="flex items-center gap-1.5">
-                  <Clock size={12} className="text-cyber-purple" />
-                  <span>Recent Chats</span>
-                  <span className="text-[10px] text-white/20 font-mono">({sessions.length})</span>
-                </div>
-                {historyOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              </button>
-
-              {historyOpen && (
-                <div className="space-y-0.5 pl-1">
-                  {sessions.length === 0 ? (
-                    <p className="text-[10px] text-white/30 py-1 px-2 italic">No conversations yet</p>
-                  ) : (
-                    sessions.slice(0, 8).map(session => (
-                      <div
-                        key={session.id}
-                        onClick={() => handleSessionClick(session)}
-                        className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer text-xs transition-all ${
-                          currentSessionId === session.id
-                            ? 'bg-cyber-purple/20 text-white border border-cyber-purple/30 font-semibold'
-                            : 'text-white/60 hover:text-white hover:bg-white/5'
-                        }`}
-                      >
-                        <span className="truncate flex-1 pr-1">{session.title || 'Chat Session'}</span>
-                        <button
-                          onClick={(e) => handleDeleteClick(e, session.id)}
-                          className={`p-1 transition-all ${
-                            pendingDeleteId === session.id ? 'text-red-400 bg-red-500/10 rounded' : 'opacity-0 group-hover:opacity-100 text-white/20 hover:text-red-400'
-                          }`}
-                        >
-                          {pendingDeleteId === session.id ? <CheckCircle2 size={11} className="text-red-400" /> : <Trash2 size={11} />}
-                        </button>
-                      </div>
-                    ))
-                  )}
                 </div>
               )}
             </div>
@@ -559,6 +572,15 @@ export default function Sidebar({
           </button>
         </div>
       </aside>
+
+      {/* ── Mobile Drawer Backdrop ────────────────────────────────────────── */}
+      {mobileOpen && (
+        <div 
+          onClick={() => setMobileOpen(false)} 
+          className="md:hidden fixed inset-0 bg-black/75 backdrop-blur-sm z-40 transition-opacity animate-in fade-in duration-200"
+          aria-hidden="true"
+        />
+      )}
 
       {/* ── Mobile Drawer ─────────────────────────────────────────────────── */}
       <aside className={`

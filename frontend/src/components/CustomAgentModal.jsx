@@ -15,7 +15,7 @@ import {
   CheckSquare, 
   Folder
 } from 'lucide-react';
-import axios from 'axios';
+import { apiClient } from '../lib/api';
 
 export default function CustomAgentModal({ isOpen, onClose, onAgentCreated }) {
   const [templates, setTemplates] = useState([]);
@@ -40,7 +40,7 @@ export default function CustomAgentModal({ isOpen, onClose, onAgentCreated }) {
     if (isOpen) {
       setError(null);
       setLoadingTemplates(true);
-      axios.get('/api/agents/templates', { withCredentials: true })
+      apiClient.get('/agents/templates')
         .then(res => {
           if (Array.isArray(res.data)) {
             setTemplates(res.data);
@@ -105,10 +105,7 @@ export default function CustomAgentModal({ isOpen, onClose, onAgentCreated }) {
         outputStyle
       };
 
-      const res = await axios.post('/api/agents/custom', payload, {
-        headers: { 'Content-Type': 'application/json' },
-        withCredentials: true
-      });
+      const res = await apiClient.post('/agents/custom', payload);
 
       if (onAgentCreated) {
         onAgentCreated(res.data);

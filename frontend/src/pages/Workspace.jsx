@@ -22,11 +22,12 @@ import {
   Bot
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import axios from 'axios';
+import { apiClient, apiFetch } from '../lib/api';
 import { useLocation } from 'react-router-dom';
 import { PRIMARY_MODES, ADVANCED_AGENTS, getAgentDef } from '../config/canonicalAgents';
 import AgentActivityCard from '../components/AgentActivityCard';
 import VoiceOrb from '../components/VoiceOrb';
+import VoiceHUD from '../components/VoiceHUD';
 import DocumentViewer from '../components/DocumentViewer';
 import CommandPalette from '../components/CommandPalette';
 import CustomAgentModal from '../components/CustomAgentModal';
@@ -126,7 +127,9 @@ export default function Workspace({
     speakWithTTS,
     cancelSpeech,
     resetAudioBlob,
-    voiceState
+    voiceState,
+    micError,
+    clearMicError
   } = voiceRecorder;
 
   // Time-aware greeting for minimal home screen (Section 2)
@@ -153,7 +156,7 @@ export default function Workspace({
 
   const fetchCustomAgents = async () => {
     try {
-      const res = await axios.get('/api/agents/custom', { withCredentials: true });
+      const res = await apiClient.get('/agents/custom');
       if (Array.isArray(res.data)) {
         setCustomAgents(res.data);
       }
@@ -171,7 +174,7 @@ export default function Workspace({
     if (!activeSessionId) return;
     const restoreSession = async () => {
       try {
-        const res = await axios.get(`/api/ai/session/${activeSessionId}/state`, { withCredentials: true });
+        const res = await apiClient.get(`/ai/session/${activeSessionId}/state`);
         if (res.data?.session) {
           const sess = res.data.session;
           if (Array.isArray(sess.messages) && sess.messages.length > 0 && messages.length === 0) {
@@ -230,7 +233,7 @@ export default function Workspace({
   // ─── Fetch User Projects ──────────────────────────────────────────────────
   const fetchProjects = async () => {
     try {
-      const res = await axios.get('/api/projects', { withCredentials: true });
+      const res = await apiClient.get('/projects');
       if (Array.isArray(res.data)) {
         setProjects(res.data);
         if (!selectedProjectId && res.data.length > 0) {
@@ -287,10 +290,10 @@ export default function Workspace({
     if (!newProjectName.trim()) return;
     setIsCreatingProject(true);
     try {
-      const res = await axios.post('/api/projects', {
+      const res = await apiClient.post('/projects', {
         name: newProjectName.trim(),
         description: newProjectDesc.trim() || undefined
-      }, { withCredentials: true });
+      });
 
       if (res.data?.id) {
         setProjects(prev => [res.data, ...prev]);
@@ -348,7 +351,7 @@ export default function Workspace({
     if (!docId) return;
     setDocLoading(true);
     try {
-      const res = await axios.get(`/api/document/${docId}`, { withCredentials: true });
+      const res = await apiClient.get(`/document/${docId}`);
       if (res.data) {
         setActiveDocument(res.data);
         setViewMode('split');
@@ -444,10 +447,9 @@ export default function Workspace({
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata'
       };
 
-      const response = await fetch('/api/ai/orchestrate-stream', {
+      const response = await apiFetch('/ai/orchestrate-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(payload),
         signal: abortController.signal
       });
@@ -638,6 +640,10 @@ export default function Workspace({
         }
       } else {
         console.error('[Execution Error]:', err);
+        // Preserve user input draft during recoverable failure
+        if (lastUserPromptRef.current) {
+          setInputText(lastUserPromptRef.current);
+        }
         setMessages(prev => prev.map(m => m.id === assistantMsgId ? {
           ...m,
           content: `⚠️ Error: ${err.message || 'Execution failed. Please try again.'}`,
@@ -799,10 +805,10 @@ export default function Workspace({
 
           {/* View Mode Switcher (if document active) */}
           {activeDocument && (
-            <div className="hidden sm:flex items-center bg-white/[0.03] border border-white/10 p-0.5 rounded-xl text-xs">
+            <div className="flex items-center bg-white/[0.03] border border-white/10 p-0.5 rounded-xl text-xs">
               <button
                 onClick={() => setViewMode('chat')}
-                className={`px-2.5 py-1 rounded-lg transition-all ${
+                className={`px-2 py-1 rounded-lg transition-all ${
                   viewMode === 'chat' ? 'bg-white/10 text-white font-bold' : 'text-white/50 hover:text-white'
                 }`}
               >
@@ -810,23 +816,23 @@ export default function Workspace({
               </button>
               <button
                 onClick={() => setViewMode('split')}
-                className={`px-2.5 py-1 rounded-lg transition-all ${
-                  viewMode === 'split' ? 'bg-cyber-cyan/20 text-cyber-cyan font-bold' : 'text-white/50 hover:text-white'
+                className={`hidden md:inline-block px-2 py-1 rounded-lg transition-all ${
+                  viewMode === 'split' ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'text-white/50 hover:text-white'
                 }`}
               >
                 Split
               </button>
               <button
                 onClick={() => setViewMode('document')}
-                className={`px-2.5 py-1 rounded-lg transition-all ${
-                  viewMode === 'document' ? 'bg-cyber-cyan/20 text-cyber-cyan font-bold' : 'text-white/50 hover:text-white'
+                className={`px-2 py-1 rounded-lg transition-all ${
+                  viewMode === 'document' ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'text-white/50 hover:text-white'
                 }`}
               >
                 Doc
               </button>
               <button
                 onClick={() => { setActiveDocument(null); setViewMode('chat'); }}
-                className="p-1 text-white/40 hover:text-rose-400 rounded transition-colors ml-1"
+                className="p-1 text-white/40 hover:text-rose-400 rounded transition-colors ml-0.5"
                 title="Close Document"
               >
                 <X size={13} />
@@ -849,7 +855,7 @@ export default function Workspace({
       </header>
 
       {/* ── Main Dynamic Workspace Body ───────────────────────────────────── */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
 
         {/* Floating VoiceOrb Drawer/Canvas Preview */}
         {showVoiceOrb && (
@@ -1249,6 +1255,31 @@ export default function Workspace({
               </div>
             )}
 
+            {/* Context-Aware Voice HUD (Listening -> Transcribing -> Thinking -> Speaking) */}
+            {(isRecording || isSttLoading || isSpeaking || micError) && (
+              <VoiceHUD
+                isRecording={isRecording}
+                isSttLoading={isSttLoading}
+                isStreaming={isStreaming}
+                isSpeaking={isSpeaking}
+                voiceState={voiceState}
+                transcript={transcript}
+                liveTranscript={liveTranscript}
+                audioAnalyser={audioAnalyser}
+                onStopRecording={stopRecording}
+                onCancel={() => {
+                  if (isRecording) stopRecording();
+                  cancelSpeech?.();
+                  setShowVoiceOrb(false);
+                }}
+                onSubmit={(text) => submitStreamMessage(text)}
+                onInterrupt={cancelSpeech}
+                micError={micError}
+                onClearMicError={clearMicError}
+                languageLabel={currentLang === 'hi-IN' ? 'हिन्दी' : currentLang === 'en-IN' ? 'English' : currentLang}
+              />
+            )}
+
             {/* Hidden file input */}
             <input
               ref={fileInputRef}
@@ -1287,7 +1318,7 @@ export default function Workspace({
                   adjustTextareaHeight(e.target);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
+                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault();
                     if ((inputText.trim() || attachedFile) && !isStreaming) {
                       submitStreamMessage(inputText);

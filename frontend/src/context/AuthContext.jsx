@@ -1,19 +1,19 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { apiFetch } from '../lib/api';
 
 const AuthContext = createContext(null);
-
-const API_BASE = '/api';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);          // null = not logged in
   const [isGuest, setIsGuest] = useState(false);   // true = guest session
   const [authLoading, setAuthLoading] = useState(true);
+  const [guestError, setGuestError] = useState(null);
 
   // ─── Hydrate session on mount via GET /api/auth/me ────────────────────────
   useEffect(() => {
     const hydrate = async () => {
       try {
-        const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
+        const res = await apiFetch('/auth/me');
         if (res.ok) {
           const data = await res.json();
           setUser(data.user);
@@ -34,10 +34,9 @@ export const AuthProvider = ({ children }) => {
 
   // ─── Register ──────────────────────────────────────────────────────────────
   const register = useCallback(async ({ name, email, password }) => {
-    const res = await fetch(`${API_BASE}/auth/register`, {
+    const res = await apiFetch('/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ name, email, password }),
     });
 
@@ -51,10 +50,9 @@ export const AuthProvider = ({ children }) => {
 
   // ─── Login ─────────────────────────────────────────────────────────────────
   const login = useCallback(async ({ email, password }) => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await apiFetch('/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ email, password }),
     });
 
@@ -68,35 +66,35 @@ export const AuthProvider = ({ children }) => {
 
   // ─── Guest ─────────────────────────────────────────────────────────────────
   const continueAsGuest = useCallback(async () => {
+    setGuestError(null);
     try {
-      const res = await fetch(`${API_BASE}/auth/local-login`, {
+      const res = await apiFetch('/auth/local-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ isGuest: true }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data.user);
-        setIsGuest(true);
-        return data.user;
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Guest session initialization failed on server.');
       }
+      setUser(data.user);
+      setIsGuest(true);
+      return data.user;
     } catch (err) {
       console.error('Guest login failed:', err);
+      const msg = err.message || 'Unable to establish secure guest session with server. Please try again.';
+      setGuestError(msg);
+      setUser(null);
+      setIsGuest(false);
+      throw new Error(msg);
     }
-    // Fallback: set a client-side guest if backend unreachable
-    const guestUser = { name: 'Guest', email: null, isGuest: true, provider: 'guest' };
-    setUser(guestUser);
-    setIsGuest(true);
-    return guestUser;
   }, []);
 
   // ─── Logout ────────────────────────────────────────────────────────────────
   const logout = useCallback(async () => {
     try {
-      await fetch(`${API_BASE}/auth/logout`, {
+      await apiFetch('/auth/logout', {
         method: 'POST',
-        credentials: 'include',
       });
     } catch (err) {
       console.error('Logout error:', err);
@@ -107,7 +105,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, setUser, isGuest, authLoading, register, login, continueAsGuest, logout }}>
+    <AuthContext.Provider value={{ user, setUser, isGuest, guestError, setGuestError, authLoading, register, login, continueAsGuest, logout }}>
       {children}
     </AuthContext.Provider>
   );

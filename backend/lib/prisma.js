@@ -15,7 +15,12 @@ if (isPostgres) {
     const { PrismaPg } = await import('@prisma/adapter-pg');
     const pg = await import('pg');
     const Pool = pg.default?.Pool || pg.Pool;
-    const pool = new Pool({ connectionString: dbUrl });
+    const pool = new Pool({
+      connectionString: dbUrl,
+      max: parseInt(process.env.DB_POOL_MAX || '10', 10),
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000
+    });
     adapter = new PrismaPg(pool);
   } catch (err) {
     console.error('[Prisma] Failed to initialize PostgreSQL adapter:', err);
@@ -48,6 +53,12 @@ if (isPostgres) {
   adapter = new PrismaBetterSqlite3({ url });
 }
 
-const prisma = new PrismaClient(adapter ? { adapter } : undefined);
+// Cache client on globalThis to prevent connection leaks across serverless/HMR invocations
+const globalForPrisma = globalThis;
+const prisma = globalForPrisma.__prisma ?? new PrismaClient(adapter ? { adapter } : undefined);
+
+if (process.env.NODE_ENV !== 'production' || process.env.VERCEL) {
+  globalForPrisma.__prisma = prisma;
+}
 
 export default prisma;

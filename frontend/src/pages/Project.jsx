@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { apiClient } from '../lib/api';
 import { Bot, ArrowLeft, Plus, Search, Activity, Plug, X, History, ListTodo, Repeat, Clock } from 'lucide-react';
 import DocumentViewer from '../components/DocumentViewer';
 import RoadmapTimeline from '../components/RoadmapTimeline';
@@ -53,7 +53,7 @@ const Project = () => {
 
   const fetchProject = async () => {
     try {
-      const res = await axios.get(`/api/projects/${id}`, { withCredentials: true });
+      const res = await apiClient.get(`/projects/${id}`);
       setProject(res.data);
     } catch (error) {
       console.error("Failed to load project", error);
@@ -69,7 +69,7 @@ const Project = () => {
   const fetchAutomations = async () => {
     setAutomationsLoading(true);
     try {
-      const res = await axios.get(`/api/schedule?projectId=${id}`, { withCredentials: true });
+      const res = await apiClient.get(`/schedule?projectId=${id}`);
       if (res.data?.actions) {
         setAutomations(res.data.actions);
       }
@@ -91,14 +91,14 @@ const Project = () => {
     if (!scheduleTitle.trim()) return;
     setIsScheduling(true);
     try {
-      const res = await axios.post('/api/schedule', {
+      const res = await apiClient.post('/schedule', {
         title: scheduleTitle.trim(),
         schedule: scheduleRecurrence,
         actionType: scheduleType,
         projectId: id,
         payload: { prompt: scheduleTitle.trim(), query: scheduleTitle.trim() },
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata'
-      }, { withCredentials: true });
+      });
 
       if (res.data?.action) {
         setAutomations(prev => [res.data.action, ...prev]);
@@ -125,7 +125,7 @@ const Project = () => {
     if (!selectedDoc?.id) return;
     setVersionLoading(true);
     try {
-      const res = await axios.get(`/api/document/${selectedDoc.id}`, { withCredentials: true });
+      const res = await apiClient.get(`/document/${selectedDoc.id}`);
       setDocumentVersions(res.data.versions || []);
     } catch (error) {
       console.error("Failed to load versions", error);
@@ -153,12 +153,12 @@ const Project = () => {
     if (!selectedAgent || !agentPrompt.trim()) return;
     setAgentLoading(true);
     try {
-      const res = await axios.post('/api/ai/chat', {
+      const res = await apiClient.post('/ai/chat', {
         prompt: agentPrompt,
         projectId: id,
         agentType: selectedAgent.id,
         messages: []
-      }, { withCredentials: true });
+      });
 
       setSelectedAgent(null);
       setAgentPrompt('');
@@ -180,9 +180,8 @@ const Project = () => {
   const handleExport = async (format) => {
     if (!selectedDoc) return;
     try {
-      const response = await axios.get(`/api/export/${selectedDoc.id}/${format}`, {
-        responseType: 'blob',
-        withCredentials: true
+      const response = await apiClient.get(`/export/${selectedDoc.id}/${format}`, {
+        responseType: 'blob'
       });
       
       const mimeTypes = {
@@ -210,9 +209,9 @@ const Project = () => {
     if (!selectedDoc || selectedDoc.type !== 'brd') return;
     setConvertLoading(true);
     try {
-      const res = await axios.post(`/api/document/${selectedDoc.id}/convert`, {
+      const res = await apiClient.post(`/document/${selectedDoc.id}/convert`, {
         targetType: 'prd'
-      }, { withCredentials: true });
+      });
 
       window.dispatchEvent(new Event('vani_document_created'));
 
@@ -230,10 +229,10 @@ const Project = () => {
   const handleRestoreVersion = async () => {
     if (!selectedDoc || !selectedVersion) return;
     try {
-      await axios.put(`/api/document/${selectedDoc.id}`, {
+      await apiClient.put(`/document/${selectedDoc.id}`, {
         content: selectedVersion.content,
         title: selectedDoc.title
-      }, { withCredentials: true });
+      });
 
       setSelectedVersion(null);
       setShowVersionHistory(false);

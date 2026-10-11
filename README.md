@@ -182,14 +182,14 @@ ALLOWED_ORIGIN=http://localhost:3000,http://localhost:5173
 
 ### 1. Install Dependencies
 ```bash
-# In project root
-npm run install-all
+# In project root (installs both backend & frontend via workspaces and generates Prisma client)
+npm install
 ```
 
 ### 2. Database Migration & Prisma Client
 ```bash
-cd backend
-npx prisma generate
+# Generate Prisma Client & apply schema
+npx prisma generate --schema=backend/prisma/schema.prisma
 ```
 
 ### 3. Run Development Servers
@@ -198,27 +198,26 @@ npx prisma generate
 npm run dev
 ```
 
-Or run them individually:
+### 4. Production Build & Deployment
+See [`docs/DEPLOYMENT.md`](file:///e:/ANTIGRVITY/vani%20ai/docs/DEPLOYMENT.md) for full Vercel serverless deployment instructions, required environment variables, and health checks.
 ```bash
-# Terminal 1: Backend
-cd backend && npm run dev
-
-# Terminal 2: Frontend
-cd frontend && npm run dev
+# Production Build
+npm run build
 ```
 
 ---
 
 ## 🧪 9. Running Tests
 
-Automated tests mock all external AI services and do NOT require live credentials or internet access.
+Automated tests mock external AI services and do NOT require live credentials or internet access:
 
 ```bash
-# Run Backend Test Suite (Auth, Security, BRD, TinyFish, JSON Parser, Voice)
-cd backend && npm test
+# Run all tests (Backend & Frontend)
+npm test
 
-# Run Frontend Test Suite (Voice Recorder Hook, Audio, VAD)
-cd frontend && npm test
+# Run individual test suites
+npm --prefix backend test
+npm --prefix frontend test -- --run
 ```
 
 ---

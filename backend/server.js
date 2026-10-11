@@ -219,6 +219,19 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// 4. Sanitized Provider Diagnostics Check (no keys exposed)
+app.get('/api/health/providers', (req, res) => {
+  res.json({
+    status: 'ok',
+    providers: {
+      sarvam: { configured: Boolean(process.env.SARVAM_API_KEY) },
+      tinyfish: { configured: Boolean(process.env.TINYFISH_API_KEY) },
+      gemini: { configured: Boolean(process.env.GEMINI_API_KEY) },
+      openai: { configured: Boolean(process.env.OPENAI_API_KEY) }
+    }
+  });
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/voice', voiceRoutes);
 app.use('/api/voice', voiceCommandRoutes);
@@ -233,15 +246,29 @@ app.use('/api/agents', customAgentRoutes);
 app.use('/api/schedule', scheduleRoutes);
 app.use('/api/schedules', scheduleRoutes);
 
-// Serve frontend build (production only — in dev, Vite runs separately)
-const publicDir = path.join(__dirname, 'public');
-const indexHtml = path.join(publicDir, 'index.html');
+// Catch-all for undefined API routes — always return JSON 404, never index.html
+app.all('/api/*', (req, res) => {
+  res.status(404).json({
+    error: `API route not found: ${req.method} ${req.originalUrl}`,
+    code: 'NOT_FOUND',
+    retryable: false
+  });
+});
 
-if (existsSync(indexHtml)) {
-  app.use(express.static(publicDir));
+// Serve frontend build (production only — in dev, Vite runs separately)
+const frontendDistDir = path.join(__dirname, '..', 'frontend', 'dist');
+const backendPublicDir = path.join(__dirname, 'public');
+const resolvedStaticDir = existsSync(path.join(frontendDistDir, 'index.html'))
+  ? frontendDistDir
+  : existsSync(path.join(backendPublicDir, 'index.html'))
+    ? backendPublicDir
+    : null;
+
+if (resolvedStaticDir) {
+  app.use(express.static(resolvedStaticDir));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api')) return next();
-    res.sendFile(indexHtml);
+    res.sendFile(path.join(resolvedStaticDir, 'index.html'));
   });
 }
 

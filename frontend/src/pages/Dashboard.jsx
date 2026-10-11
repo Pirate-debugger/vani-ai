@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Folder, FileText, ChevronRight, X } from 'lucide-react';
-import axios from 'axios';
+import { apiClient } from '../lib/api';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -22,7 +22,7 @@ const Dashboard = () => {
 
   const fetchProjects = async () => {
     try {
-      const res = await axios.get('/api/projects', { withCredentials: true });
+      const res = await apiClient.get('/projects');
       setProjects(res.data);
     } catch (err) {
       console.error(err);
@@ -41,10 +41,10 @@ const Dashboard = () => {
     if (!newProjectName.trim()) return;
     setCreateLoading(true);
     try {
-      const res = await axios.post('/api/projects', {
+      const res = await apiClient.post('/projects', {
         name: newProjectName.trim(),
         description: newProjectDesc.trim()
-      }, { withCredentials: true });
+      });
 
       setProjects([res.data, ...projects]);
       setShowCreateModal(false);

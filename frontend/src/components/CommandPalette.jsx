@@ -14,7 +14,7 @@ import {
   X,
   Layers
 } from 'lucide-react';
-import axios from 'axios';
+import { apiClient } from '../lib/api';
 
 export default function CommandPalette({
   isOpen,
@@ -148,9 +148,7 @@ export default function CommandPalette({
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await axios.get(`/api/projects/search?q=${encodeURIComponent(query.trim())}`, {
-          withCredentials: true
-        });
+        const res = await apiClient.get(`/projects/search?q=${encodeURIComponent(query.trim())}`);
         setResults({
           projects: res.data?.projects || [],
           documents: res.data?.documents || [],

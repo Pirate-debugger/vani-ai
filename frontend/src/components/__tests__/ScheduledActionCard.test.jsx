@@ -1,10 +1,16 @@
 import React, { act } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
-import axios from 'axios';
+import { apiClient } from '../../lib/api';
 import ScheduledActionCard from '../ScheduledActionCard';
 
-vi.mock('axios');
+vi.mock('../../lib/api', () => ({
+  apiClient: {
+    post: vi.fn(),
+    delete: vi.fn(),
+    get: vi.fn()
+  }
+}));
 
 describe('ScheduledActionCard Component', () => {
   const mockAction = {
@@ -29,7 +35,7 @@ describe('ScheduledActionCard Component', () => {
   });
 
   it('triggers Run Now execution without destroying future schedule', async () => {
-    axios.post.mockResolvedValueOnce({
+    apiClient.post.mockResolvedValueOnce({
       data: {
         success: true,
         result: { status: 'completed', runId: 'run-999' }
@@ -44,11 +50,7 @@ describe('ScheduledActionCard Component', () => {
       fireEvent.click(runNowBtn);
     });
 
-    expect(axios.post).toHaveBeenCalledWith(
-      '/api/schedule/act-001/run-now',
-      {},
-      { withCredentials: true }
-    );
+    expect(apiClient.post).toHaveBeenCalledWith('/schedule/act-001/run-now');
 
     await waitFor(() => {
       expect(screen.getByText(/Ran successfully! Future schedule preserved./i)).toBeInTheDocument();
@@ -56,7 +58,7 @@ describe('ScheduledActionCard Component', () => {
   });
 
   it('supports pause and resume actions', async () => {
-    axios.post.mockResolvedValueOnce({
+    apiClient.post.mockResolvedValueOnce({
       data: {
         success: true,
         action: { ...mockAction, status: 'paused' }
@@ -71,11 +73,7 @@ describe('ScheduledActionCard Component', () => {
       fireEvent.click(pauseBtn);
     });
 
-    expect(axios.post).toHaveBeenCalledWith(
-      '/api/schedule/act-001/pause',
-      {},
-      { withCredentials: true }
-    );
+    expect(apiClient.post).toHaveBeenCalledWith('/schedule/act-001/pause');
 
     expect(handleUpdated).toHaveBeenCalledWith(expect.objectContaining({ status: 'paused' }));
   });

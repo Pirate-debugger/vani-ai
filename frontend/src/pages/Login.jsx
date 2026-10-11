@@ -1,11 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Mail, Lock, User, ArrowRight, Loader, Eye, EyeOff, ShieldAlert, KeyRound, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import axios from 'axios';
-
-const BACKEND_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-  ? 'http://localhost:5000' 
-  : window.location.origin;
+import { apiClient, buildApiUrl } from '../lib/api';
 
 const Login = ({ onLoginSuccess }) => {
   const { register, login, continueAsGuest } = useAuth();
@@ -79,10 +75,10 @@ const Login = ({ onLoginSuccess }) => {
     if (!email.trim()) { setError('Please enter your email address.'); return; }
     setLoading(true); setError(''); setSuccessMsg('');
     try {
-      const res = await axios.post(`${BACKEND_URL}/api/auth/forgot-password`, { email: email.trim() });
+      const res = await apiClient.post('/auth/forgot-password', { email: email.trim() });
       setSuccessMsg(res.data.message);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to request password reset.');
+      setError(err.message || 'Failed to request password reset.');
     } finally {
       setLoading(false);
     }
@@ -95,7 +91,7 @@ const Login = ({ onLoginSuccess }) => {
     if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
     setLoading(true); setError(''); setSuccessMsg('');
     try {
-      const res = await axios.post(`${BACKEND_URL}/api/auth/reset-password`, { 
+      const res = await apiClient.post('/auth/reset-password', { 
         token: resetToken, 
         email: email.trim(), 
         newPassword: password 
@@ -103,7 +99,7 @@ const Login = ({ onLoginSuccess }) => {
       setSuccessMsg(res.data.message);
       setTimeout(() => switchMode('signin'), 3000);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to reset password.');
+      setError(err.message || 'Failed to reset password.');
     } finally {
       setLoading(false);
     }
@@ -215,7 +211,7 @@ const Login = ({ onLoginSuccess }) => {
               </div>
 
               <a
-                href={`${BACKEND_URL}/api/auth/google`}
+                href={buildApiUrl('/auth/google')}
                 className="w-full py-4 rounded-xl font-semibold bg-white text-black hover:bg-gray-100 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 shadow-lg"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">

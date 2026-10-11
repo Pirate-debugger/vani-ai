@@ -13,7 +13,7 @@ import {
   Sparkles,
   ExternalLink
 } from 'lucide-react';
-import axios from 'axios';
+import { apiClient } from '../lib/api';
 
 /**
  * ScheduledActionCard Component
@@ -65,7 +65,7 @@ export default function ScheduledActionCard({
     setErrorMessage(null);
     setSuccessNotice(null);
     try {
-      const res = await axios.post(`/api/schedule/${id}/run-now`, {}, { withCredentials: true });
+      const res = await apiClient.post(`/schedule/${id}/run-now`);
       if (res.data?.success) {
         setSuccessNotice('Ran successfully! Future schedule preserved.');
         if (onActionUpdated && res.data?.result) {
@@ -86,7 +86,7 @@ export default function ScheduledActionCard({
     setIsUpdating(true);
     setErrorMessage(null);
     try {
-      const res = await axios.post(`/api/schedule/${id}/pause`, {}, { withCredentials: true });
+      const res = await apiClient.post(`/schedule/${id}/pause`);
       if (res.data?.action && onActionUpdated) {
         onActionUpdated(res.data.action);
       }
@@ -102,7 +102,7 @@ export default function ScheduledActionCard({
     setIsUpdating(true);
     setErrorMessage(null);
     try {
-      const res = await axios.post(`/api/schedule/${id}/resume`, {}, { withCredentials: true });
+      const res = await apiClient.post(`/schedule/${id}/resume`);
       if (res.data?.action && onActionUpdated) {
         onActionUpdated(res.data.action);
       }
@@ -119,7 +119,7 @@ export default function ScheduledActionCard({
     setIsUpdating(true);
     setErrorMessage(null);
     try {
-      await axios.delete(`/api/schedule/${id}`, { withCredentials: true });
+      await apiClient.delete(`/schedule/${id}`);
       if (onActionDeleted) {
         onActionDeleted(id);
       } else if (onActionUpdated) {

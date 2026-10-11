@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import { apiClient } from './lib/api';
 import { useAuth, AuthProvider } from './context/AuthContext';
 import { ChatHistoryProvider, useChatHistory } from './context/ChatHistoryContext';
 import Sidebar from './components/Sidebar';
@@ -92,7 +92,7 @@ const AppInner = () => {
   useEffect(() => {
     const checkHealth = async () => {
       try {
-        await axios.get('/api/health', { timeout: 3000 });
+        await apiClient.get('/health', { timeout: 3000 });
         setBackendOffline(false);
       } catch {
         setBackendOffline(true);
@@ -155,11 +155,8 @@ const AppInner = () => {
         profile: getProfile(),
         speaker: getSpeaker()
       };
-      const response = await axios.post('/api/ai/chat', payload, {
-        headers: { 'Content-Type': 'application/json' },
-        withCredentials: true
-      });
-      setIsSimulatorMode(!!response.data.simulated);
+      const response = await apiClient.post('/ai/chat', payload);
+      setIsSimulatorMode(!!response.data?.simulated);
       return response.data;
     } catch (error) {
       console.error('API submission failed:', error);

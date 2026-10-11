@@ -2,14 +2,28 @@
   "name": "vani-ai-monorepo",
   "version": "1.0.0",
   "description": "Premium Multilingual Voice-First AI Assistant for Indian Users",
-  "main": "index.js",
+  "main": "api/index.js",
+  "type": "module",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
   "scripts": {
-    "install-all": "npm install && npm install --prefix backend && npm install --prefix frontend",
+    "build": "npm --prefix backend run vercel-build && npm --prefix frontend run build",
+    "vercel-build": "npm --prefix backend run vercel-build && npm --prefix frontend run build",
+    "postinstall": "npm --prefix backend run vercel-build",
     "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
-    "start": "node backend/server.js"
+    "start": "node backend/server.js",
+    "test": "npm --prefix backend test && npm --prefix frontend test -- --run",
+    "test:backend": "npm --prefix backend test",
+    "test:frontend": "npm --prefix frontend test -- --run",
+    "lint": "npm --prefix frontend run lint"
   },
   "dependencies": {
     "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   },
   "author": "Antigravity",
   "license": "MIT"
