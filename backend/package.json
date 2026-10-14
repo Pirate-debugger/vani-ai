@@ -21,7 +21,7 @@
     "@google/genai": "^2.27.0",
     "@prisma/adapter-better-sqlite3": "^7.8.0",
     "@prisma/adapter-pg": "^7.10.0",
-    "@prisma/client": "^7.8.0",
+    "@prisma/client": "^7.10.0",
     "@tiny-fish/sdk": "^0.8.0",
     "axios": "^1.6.8",
     "bcryptjs": "^3.0.3",
