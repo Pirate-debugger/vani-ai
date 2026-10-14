@@ -174,9 +174,10 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
       };
       voiceSessionRef.current = newSession;
       setVoiceSession(newSession);
-      setVoiceState('listening');
+      setVoiceState('requesting_permission');
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setVoiceState('listening');
       streamRef.current = stream;
 
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -229,10 +230,10 @@ export const useVoiceRecorder = (languageCode = 'hi-IN') => {
         if (voiceSessionRef.current) {
           voiceSessionRef.current.transcript = finalTranscript;
           voiceSessionRef.current.audioBlob = blob;
-          voiceSessionRef.current.state = 'routing';
+          voiceSessionRef.current.state = 'review';
           setVoiceSession({ ...voiceSessionRef.current });
         }
-        setVoiceState('routing');
+        setVoiceState('review');
         
         if (transcriptPromiseRef.current) {
           transcriptPromiseRef.current.resolve(finalTranscript);

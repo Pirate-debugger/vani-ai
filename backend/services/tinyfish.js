@@ -67,14 +67,18 @@ export function validateAndSanitizeUrl(urlStr) {
   }
 
   const hostname = parsed.hostname.toLowerCase();
+  const cleanHost = hostname.replace(/^\[|\]$/g, '');
 
-  // 2. Loopback and localhost check
+  // 2. Loopback and localhost check (IPv4 and IPv6)
   if (
     hostname === 'localhost' ||
     hostname === '127.0.0.1' ||
     hostname === '0.0.0.0' ||
     hostname === '::1' ||
     hostname === '[::1]' ||
+    cleanHost === '::1' ||
+    cleanHost === '0:0:0:0:0:0:0:1' ||
+    cleanHost === '::' ||
     hostname.endsWith('.localhost')
   ) {
     return { valid: false, error: 'Access to loopback/localhost addresses is prohibited.' };
@@ -83,16 +87,36 @@ export function validateAndSanitizeUrl(urlStr) {
   // 3. Cloud instance metadata service check
   if (
     hostname === '169.254.169.254' ||
+    cleanHost === '169.254.169.254' ||
     hostname.startsWith('169.254.') ||
+    cleanHost.startsWith('169.254.') ||
     hostname.includes('metadata.google.internal') ||
     hostname.includes('instance-data')
   ) {
     return { valid: false, error: 'Access to cloud instance metadata service is prohibited.' };
   }
 
-  // 4. Private IPv4 subnets (RFC 1918 & special ranges)
+  // 4. IPv4-mapped IPv6 check (e.g. ::ffff:127.0.0.1, [::ffff:7f00:1], [::ffff:a00:1])
+  if (cleanHost.startsWith('::ffff:') || cleanHost.includes(':ffff:')) {
+    return { valid: false, error: 'Access via IPv4-mapped IPv6 address is prohibited.' };
+  }
+
+  // 5. IPv6 private, link-local, and multicast ranges
+  if (
+    cleanHost.startsWith('fe80:') || // Link-local (fe80::/10)
+    cleanHost.startsWith('fe9') ||
+    cleanHost.startsWith('fea') ||
+    cleanHost.startsWith('feb') ||
+    cleanHost.startsWith('fc') || // Unique Local Address (fc00::/7)
+    cleanHost.startsWith('fd') ||
+    cleanHost.startsWith('ff') // Multicast
+  ) {
+    return { valid: false, error: 'Access to private, link-local, or multicast IPv6 ranges is prohibited.' };
+  }
+
+  // 6. Private IPv4 subnets (RFC 1918 & special ranges)
   const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
-  const match = hostname.match(ipv4Regex);
+  const match = cleanHost.match(ipv4Regex);
   if (match) {
     const octet1 = parseInt(match[1], 10);
     const octet2 = parseInt(match[2], 10);
@@ -109,15 +133,18 @@ export function validateAndSanitizeUrl(urlStr) {
     if (octet1 === 127) return { valid: false, error: 'Loopback IP space is prohibited.' };
     // 0.0.0.0/8
     if (octet1 === 0) return { valid: false, error: 'Zero IP space is prohibited.' };
+    // 169.254.0.0/16 (Link-local / APIPA)
+    if (octet1 === 169 && octet2 === 254) return { valid: false, error: 'Link-local IP space is prohibited.' };
   }
 
-  // 5. Internal domain extensions (.local, .internal, .lan, .corp)
+  // 7. Internal domain extensions (.local, .internal, .lan, .corp, .home, .onion)
   if (
-    hostname.endsWith('.local') ||
-    hostname.endsWith('.internal') ||
-    hostname.endsWith('.lan') ||
-    hostname.endsWith('.corp') ||
-    hostname.endsWith('.home')
+    cleanHost.endsWith('.local') ||
+    cleanHost.endsWith('.internal') ||
+    cleanHost.endsWith('.lan') ||
+    cleanHost.endsWith('.corp') ||
+    cleanHost.endsWith('.home') ||
+    cleanHost.endsWith('.onion')
   ) {
     return { valid: false, error: 'Access to internal domains is prohibited.' };
   }

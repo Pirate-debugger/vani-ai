@@ -166,7 +166,7 @@ export const callGeminiLLM = async (messages, prompt, langCode, personality, pro
       const response = await axios.post(
         `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
         payload,
-        { headers: { 'Content-Type': 'application/json' }, timeout: options.timeoutMs || 25000 }
+        { headers: { 'Content-Type': 'application/json' }, timeout: options.timeoutMs || (isDoc ? 60000 : 35000) }
       );
 
       const candidate = response.data?.candidates?.[0];

@@ -20,12 +20,28 @@ export function getApiBaseUrl() {
  *   buildApiUrl('/projects') => '/api/projects' (or 'https://api.domain.com/api/projects')
  *   buildApiUrl('/api/health') => '/api/health'
  *   buildApiUrl('auth/me') => '/api/auth/me'
+ *   When VITE_API_URL='https://domain.com/api':
+ *   buildApiUrl('/projects') => 'https://domain.com/api/projects'
+ *   buildApiUrl('/api/projects') => 'https://domain.com/api/projects'
  */
 export function buildApiUrl(path = '') {
-  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  const rawPath = String(path).trim();
+  if (!rawPath) return '/api';
+  if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) {
+    return rawPath;
+  }
+
+  const cleanPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
   const base = getApiBaseUrl();
 
-  const normalizedPath = cleanPath.startsWith('/api/') || cleanPath === '/api'
+  if (base.endsWith('/api')) {
+    const strippedPath = cleanPath.startsWith('/api/')
+      ? cleanPath.substring(4)
+      : (cleanPath === '/api' ? '' : cleanPath);
+    return `${base}${strippedPath}`;
+  }
+
+  const normalizedPath = (cleanPath.startsWith('/api/') || cleanPath === '/api')
     ? cleanPath
     : `/api${cleanPath}`;
 

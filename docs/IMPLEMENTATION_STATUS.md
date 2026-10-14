@@ -25,14 +25,15 @@
 | **Composer as Primary Interface** | **WORKING** | [`frontend/src/pages/Workspace.jsx`](file:///e:/ANTIGRVITY/vani%20ai/frontend/src/pages/Workspace.jsx) | Multiline auto-resizing textarea with `!e.nativeEvent.isComposing` check to prevent premature submission while typing Indic/Hindi characters. Preserves input draft on recoverable execution error. Visible Stop/Cancel controls during active streaming runs. | Enter sends without newline (unless Shift+Enter); draft preserved on error; concurrent duplicate runs prevented. |
 | **Document Engine, Tasks & Schedules** | **WORKING** | [`backend/routes/document.js`](file:///e:/ANTIGRVITY/vani%20ai/backend/routes/document.js), [`backend/routes/task.js`](file:///e:/ANTIGRVITY/vani%20ai/backend/routes/task.js), [`backend/routes/schedule.js`](file:///e:/ANTIGRVITY/vani%20ai/backend/routes/schedule.js), [`frontend/src/components/DocumentViewer.jsx`](file:///e:/ANTIGRVITY/vani%20ai/frontend/src/components/DocumentViewer.jsx), [`frontend/src/components/TaskBoard.jsx`](file:///e:/ANTIGRVITY/vani%20ai/frontend/src/components/TaskBoard.jsx) | BRD generation with 29 enterprise sections; automated task extraction; document versioning and restore; export to Markdown and JSON; temporal scheduler daemon with natural language time parsing. | `tests/brdAgent.test.js` (3/3 passed), `tests/scheduler.test.js` (8/8 passed). |
 | **Mobile-First Layout & Responsiveness** | **WORKING** | [`frontend/src/pages/Workspace.jsx`](file:///e:/ANTIGRVITY/vani%20ai/frontend/src/pages/Workspace.jsx) | Updated workspace container to `flex-col lg:flex-row`. Unhid document view mode toggle (`Chat | Doc | X`) on mobile viewports (~360px) to prevent horizontal squashing of split view. | Mobile screens smoothly switch between Chat and Document views without overflow. |
-| **Live External Provider Integrations** | **NOT VERIFIED (LIVE)** | [`backend/services/providers/*`](file:///e:/ANTIGRVITY/vani%20ai/backend/services/providers/) | Live external API calls require user-provided credentials in `.env` (`SARVAM_API_KEY`, `TINYFISH_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`). Fallbacks and mocks pass all automated test suites. | When keys are supplied, live transcription, TTS, web search, and chat completions succeed. When omitted, server returns truthful 503 / disabled state. |
+| **Live External Provider Integrations** | **WORKING (VERIFIED LIVE)** | [`backend/services/providers/*`](file:///e:/ANTIGRVITY/vani%20ai/backend/services/providers/) | Live external API calls verified with active keys: Sarvam AI (`saaras:v4` STT, `bulbul:v3` TTS), Google Gemini (`gemini-3.8-flash`, `gemini-3.5-flash-lite`), TinyFish (`search.query`, `fetch.getContents`). OpenAI configured with automated fallback on quota limit. | `tests/chatToAgentEvolution.test.js` & `tests/workspaceE2E.test.js` executed live web search and BRD document generation with 100% pass rate. |
 
 ---
 
 ## 2. Verification Summary
 
-- **Backend Test Suite**: 16 test files passed.
-- **Frontend Test Suite**: 4 test files passed (11 tests, 0 failures).
-- **Frontend Production Build**: Vite build succeeded (`frontend/dist`).
-- **Prisma Schema & Generation**: Validated and generated.
-- **Security & Authorization**: IDOR, SSRF, prompt injection, and session validation passing.
+- **Backend Test Suite**: 16 test files passed (112 tests passed, 0 failures).
+- **Frontend Test Suite**: 5 test files passed (22 tests passed, 0 failures).
+- **Frontend Production Build**: Vite build succeeded (`frontend/dist`, 0 errors).
+- **Prisma Schema & Generation**: Dual provider configuration verified (PostgreSQL for production, SQLite for local dev).
+- **Security & Authorization**: IDOR, SSRF (IPv6/IPv4-mapped), prompt injection, sanitized errors, and session validation passing.
+- **Responsive UI Verification**: Visually verified on desktop (1440px) and mobile (390px, 360px) via browser subagent.

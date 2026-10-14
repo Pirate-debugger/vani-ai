@@ -217,6 +217,16 @@ describe('Security & IDOR Prevention Tests', () => {
       expect(validateAndSanitizeUrl('http://192.168.1.1/router').valid).toBe(false);
       expect(validateAndSanitizeUrl('http://172.16.0.1/dashboard').valid).toBe(false);
 
+      // IPv4-mapped IPv6 & IPv6 Private/Link-Local
+      expect(validateAndSanitizeUrl('http://[::ffff:127.0.0.1]/').valid).toBe(false);
+      expect(validateAndSanitizeUrl('http://[::ffff:169.254.169.254]/').valid).toBe(false);
+      expect(validateAndSanitizeUrl('http://[::ffff:10.0.0.1]/').valid).toBe(false);
+      expect(validateAndSanitizeUrl('http://[fe80::1]/').valid).toBe(false);
+      expect(validateAndSanitizeUrl('http://[fc00::1]/').valid).toBe(false);
+      expect(validateAndSanitizeUrl('http://[fd00::1]/').valid).toBe(false);
+      expect(validateAndSanitizeUrl('http://internal.corp').valid).toBe(false);
+      expect(validateAndSanitizeUrl('http://secret.onion').valid).toBe(false);
+
       // Dangerous Protocols
       expect(validateAndSanitizeUrl('file:///etc/passwd').valid).toBe(false);
       expect(validateAndSanitizeUrl('ftp://example.com/file').valid).toBe(false);

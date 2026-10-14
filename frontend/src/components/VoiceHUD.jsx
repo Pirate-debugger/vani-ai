@@ -20,6 +20,7 @@ export default function VoiceHUD({
   onCancel,
   onSubmit,
   onInterrupt,
+  onRetryMic,
   micError = null,
   onClearMicError,
   languageLabel = 'हिन्दी'
@@ -36,7 +37,9 @@ export default function VoiceHUD({
   }, [transcript, liveTranscript, isEditing]);
 
   // Derive normalized HUD state
-  const currentStage = isRecording
+  const currentStage = voiceState === 'requesting_permission'
+    ? 'requesting_permission'
+    : isRecording
     ? 'listening'
     : isSttLoading
     ? 'transcribing'
@@ -44,6 +47,8 @@ export default function VoiceHUD({
     ? 'thinking'
     : isSpeaking
     ? 'speaking'
+    : voiceState === 'review'
+    ? 'review'
     : voiceState === 'error'
     ? 'error'
     : 'idle';
@@ -66,31 +71,53 @@ export default function VoiceHUD({
       className="w-full bg-[#0d091e]/95 border border-cyan-500/30 rounded-2xl p-3 sm:p-4 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl animate-in fade-in slide-in-from-bottom-2 duration-200 transition-all mb-2 relative z-30"
       role="region"
       aria-label="Active Voice Interaction Session"
+      aria-live="polite"
     >
-      {/* ── Mic Error Banner ──────────────────────────────────────────────── */}
+      {/* ── Mic Error & Recovery Banner ──────────────────────────────────── */}
       {micError && (
-        <div className="mb-3 px-3 py-2 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between gap-2">
+        <div className="mb-3 p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <AlertCircle size={15} className="text-rose-400 shrink-0" />
+            <AlertCircle size={16} className="text-rose-400 shrink-0" />
             <span>{micError}</span>
           </div>
-          {onClearMicError && (
-            <button 
-              onClick={onClearMicError}
-              className="p-1 hover:text-white rounded"
-              aria-label="Dismiss error"
-            >
-              <X size={14} />
-            </button>
-          )}
+          <div className="flex items-center gap-2 self-end sm:self-center">
+            {onRetryMic && (
+              <button
+                onClick={onRetryMic}
+                className="px-2.5 py-1 rounded-lg bg-rose-500 text-white font-bold text-xs hover:bg-rose-600 focus-visible:ring-2 focus-visible:ring-white transition-all shadow-sm"
+              >
+                Retry Permission
+              </button>
+            )}
+            {onClearMicError && (
+              <button 
+                onClick={onClearMicError}
+                className="p-1 hover:text-white rounded"
+                aria-label="Dismiss error"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
         </div>
       )}
 
       {/* ── Top State Indicator Pipeline ──────────────────────────────────── */}
       <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10 text-xs">
-        <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar font-medium">
+        <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar font-medium">
+          {/* Requesting Permission (if active) */}
+          {currentStage === 'requesting_permission' && (
+            <>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold shrink-0">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                <span>Requesting Mic</span>
+              </div>
+              <span className="text-white/20">→</span>
+            </>
+          )}
+
           {/* Listening State */}
-          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all ${
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all shrink-0 ${
             currentStage === 'listening' 
               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold' 
               : 'text-white/40'
@@ -102,7 +129,7 @@ export default function VoiceHUD({
           <span className="text-white/20">→</span>
 
           {/* Transcribing State */}
-          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all ${
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all shrink-0 ${
             currentStage === 'transcribing' 
               ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold' 
               : 'text-white/40'
@@ -113,8 +140,20 @@ export default function VoiceHUD({
 
           <span className="text-white/20">→</span>
 
+          {/* Review / Spoken State */}
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all shrink-0 ${
+            currentStage === 'review'
+              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold'
+              : 'text-white/40'
+          }`}>
+            <span className={`w-2 h-2 rounded-full ${currentStage === 'review' ? 'bg-cyan-400 animate-pulse' : 'bg-white/20'}`} />
+            <span>Review</span>
+          </div>
+
+          <span className="text-white/20">→</span>
+
           {/* Thinking State */}
-          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all ${
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all shrink-0 ${
             currentStage === 'thinking' 
               ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-bold' 
               : 'text-white/40'
@@ -126,7 +165,7 @@ export default function VoiceHUD({
           <span className="text-white/20">→</span>
 
           {/* Speaking State */}
-          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all ${
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all shrink-0 ${
             currentStage === 'speaking' 
               ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold' 
               : 'text-white/40'

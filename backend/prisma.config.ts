@@ -14,6 +14,7 @@ export default defineConfig({
     url: dbUrl,
   },
   migrations: {
-    path: path.join(__dirname, 'prisma', 'migrations'),
+    path: path.join(__dirname, 'prisma', isPostgres ? 'migrations_postgresql' : 'migrations'),
   },
 });
+

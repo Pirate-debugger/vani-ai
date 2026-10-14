@@ -1132,7 +1132,7 @@ export default function Workspace({
           )}
 
           {/* ── Chat Composer & Simplified Mode Selector (Section 5) ──────── */}
-          <div className="p-3 sm:p-4 bg-[#090714]/90 border-t border-white/10 backdrop-blur-lg">
+          <div className="p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-4 bg-[#090714]/90 border-t border-white/10 backdrop-blur-lg">
             
             {/* Mode Selector (Section 5 & 8: Auto, Chat, Research, Plan, Build + My Agents & More) */}
             <div className="flex items-center gap-1.5 mb-2.5 overflow-x-auto pb-1 custom-scrollbar text-xs">
@@ -1274,6 +1274,7 @@ export default function Workspace({
                 }}
                 onSubmit={(text) => submitStreamMessage(text)}
                 onInterrupt={cancelSpeech}
+                onRetryMic={() => startRecording()}
                 micError={micError}
                 onClearMicError={clearMicError}
                 languageLabel={currentLang === 'hi-IN' ? 'हिन्दी' : currentLang === 'en-IN' ? 'English' : currentLang}
@@ -1332,7 +1333,7 @@ export default function Workspace({
                     ? "Tell Vani what MVP to build..."
                     : selectedAgent === 'plan'
                     ? "Tell Vani what task to plan..."
-                    : "Ask Vani anything or speak naturally (Shift+Enter for newline)..."
+                    : "Ask Vani anything or speak naturally..."
                 }
                 className="flex-1 bg-transparent px-2 py-1.5 text-sm text-white placeholder-slate-400 focus:outline-none resize-none max-h-40 min-h-[38px] leading-relaxed custom-scrollbar"
               />

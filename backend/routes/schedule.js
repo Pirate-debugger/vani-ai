@@ -187,4 +187,57 @@ router.patch('/:id', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/schedule/cron-trigger
+ * GET /api/schedule/cron-trigger
+ * Durable external cron trigger for serverless scale-to-zero environments.
+ * Authenticated via Authorization: Bearer <CRON_SECRET> or Vercel Cron header.
+ */
+router.all('/cron-trigger', async (req, res) => {
+  if (req.method !== 'POST' && req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const authHeader = req.headers['authorization'];
+  const cronSecret = process.env.CRON_SECRET;
+  const isVercelCron = req.headers['x-vercel-cron'] === '1';
+
+  const isAuthorized = (cronSecret && authHeader === `Bearer ${cronSecret}`) ||
+    (isVercelCron && (process.env.VERCEL || process.env.NODE_ENV === 'production')) ||
+    (process.env.NODE_ENV !== 'production' && !cronSecret);
+
+  if (!isAuthorized) {
+    return res.status(401).json({ error: 'Unauthorized: Invalid cron secret or trigger credentials' });
+  }
+
+  try {
+    const now = new Date();
+    const dueActions = await prisma.scheduledAction.findMany({
+      where: {
+        status: 'scheduled',
+        nextRunAt: { lte: now }
+      },
+      take: 10
+    });
+
+    const results = [];
+    for (const due of dueActions) {
+      console.log(`[Cron Trigger] Executing due action ${due.id}: "${due.title}"`);
+      const result = await executeScheduledAction(due.id);
+      results.push({ id: due.id, title: due.title, success: result?.success ?? true });
+    }
+
+    return res.json({
+      success: true,
+      timestamp: now.toISOString(),
+      processed: results.length,
+      actions: results
+    });
+  } catch (err) {
+    console.error('[Cron Trigger Error]:', err);
+    return res.status(500).json({ error: 'Cron trigger execution failed', message: err.message });
+  }
+});
+
 export default router;
+

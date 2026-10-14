@@ -26,22 +26,25 @@ import crypto from 'crypto';
 import pinoHttp from 'pino-http';
 import logger from './lib/logger.js';
 
-dotenv.config();
-
-// ─── Security guard ────────────────────────────────────────────────────────
-if (
-  !process.env.SESSION_SECRET ||
-  process.env.SESSION_SECRET === 'vani-dev-secret-change-in-prod'
-) {
-  if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
-    throw new Error('SESSION_SECRET must be set in production');
-  } else if (!process.env.SESSION_SECRET) {
-    process.env.SESSION_SECRET = 'vani-prod-session-fallback-' + crypto.randomBytes(16).toString('hex');
-  }
-}
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+dotenv.config();
+if (existsSync(path.resolve(__dirname, '.env'))) {
+  dotenv.config({ path: path.resolve(__dirname, '.env'), override: true });
+}
+
+// ─── Security guard ────────────────────────────────────────────────────────
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
+const isPlaceholderSecret = !process.env.SESSION_SECRET ||
+  process.env.SESSION_SECRET === 'vani-dev-secret-change-in-prod' ||
+  process.env.SESSION_SECRET === 'super_secret_session_key_change_in_production_min_32_chars';
+
+if (isProduction && isPlaceholderSecret) {
+  throw new Error('FATAL: A strong SESSION_SECRET (minimum 32 characters) must be explicitly configured in production. Ephemeral fallback secrets are prohibited across serverless cold starts.');
+} else if (!process.env.SESSION_SECRET) {
+  process.env.SESSION_SECRET = 'vani-dev-secret-' + crypto.randomBytes(16).toString('hex');
+}
 
 const app = express();
 
@@ -209,10 +212,11 @@ app.get('/api/health/ready', async (req, res) => {
       }
     });
   } catch (dbErr) {
+    logger.error({ err: dbErr.message }, '[Health] Readiness probe database connection failure');
     res.status(503).json({
       status: 'not_ready',
       database: 'disconnected',
-      error: dbErr.message,
+      error: process.env.NODE_ENV === 'production' ? 'Database connection unavailable' : dbErr.message,
       timestamp: new Date().toISOString()
     });
   }

@@ -673,6 +673,40 @@ export default function Sidebar({
               <Plus size={12} /> All Agents ({CANONICAL_AGENTS.length})
             </button>
           </div>
+
+          {/* Mobile Settings & Profile */}
+          <div className="pt-2 border-t border-white/10 space-y-2">
+            <button
+              onClick={() => { navigate('/settings'); setMobileOpen(false); }}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                location.pathname === '/settings' ? 'bg-white/10 text-white' : 'text-white/70 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Settings size={14} className="text-cyan-400 shrink-0" />
+              <span>Settings</span>
+            </button>
+
+            {isLoggedIn && (
+              <div className="flex items-center justify-between p-2 rounded-xl bg-white/[0.03] border border-white/5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-cyber-purple/20 border border-cyber-purple/30 flex items-center justify-center text-xs font-bold text-cyber-neonPurple">
+                    {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+                  </div>
+                  <div className="truncate">
+                    <p className="text-xs font-bold text-white truncate">{user?.name || 'Local User'}</p>
+                    <p className="text-[10px] text-white/30 truncate">{user?.email || 'Logged in'}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { logout(); setMobileOpen(false); }}
+                  className="p-1 text-white/40 hover:text-rose-400 rounded transition-colors"
+                  title="Log out"
+                >
+                  <LogOut size={14} />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </aside>
 

@@ -73,12 +73,18 @@ npm install
 ```
 This automatically runs `npm install` across root, `backend/`, and `frontend/` workspaces, and generates the Prisma client.
 
-### Step 2: Database Preparation
+### Step 2: Database Preparation (PostgreSQL)
 Before pointing production traffic:
 ```bash
-# Push schema or apply migrations to production PostgreSQL
-npx prisma migrate deploy --schema=backend/prisma/schema.prisma
+# Apply provider-isolated PostgreSQL migrations
+npm run prisma:migrate:pg --prefix backend
+
+# Or push PostgreSQL schema directly
+npm run prisma:push:pg --prefix backend
 ```
+
+> [!CAUTION]
+> In production environments (such as Vercel), `DATABASE_URL` targeting a PostgreSQL instance is strictly required. Vani AI blocks silent fallback to ephemeral `/tmp/dev.db` SQLite files. If `DATABASE_URL` is absent on Vercel, the application fails fast with a clear configuration error.
 
 ### Step 3: Production Build
 ```bash
@@ -86,7 +92,15 @@ npm run build
 ```
 This compiles the React frontend into `frontend/dist/` and runs Prisma code generation.
 
-### Step 4: Deploying to Vercel
+### Step 4: Scheduled Actions via Serverless Cron
+On scale-to-zero serverless platforms, background in-process timers sleep between HTTP requests. Trigger due actions externally using Vercel Cron or GitHub Actions:
+```bash
+# Vercel Cron or external curl:
+curl -X POST https://your-vani-domain.com/api/schedule/cron-trigger \
+  -H "Authorization: Bearer <CRON_SECRET>"
+```
+
+### Step 5: Deploying to Vercel
 Connect your GitHub repository to Vercel or deploy using Vercel CLI:
 ```bash
 vercel --prod
@@ -105,8 +119,9 @@ Verify your deployment with the following endpoints:
 | Endpoint | Method | Expected Output | Purpose |
 |---|---|---|---|
 | `/api/health/live` | `GET` | `{"status":"ok","uptime":...}` | Container/serverless liveness |
-| `/api/health/ready` | `GET` | `{"ready":true,"database":{"connected":true}}` | Database connectivity readiness |
+| `/api/health/ready` | `GET` | `{"ready":true,"database":{"connected":true}}` | Sanitized database connectivity readiness (no internal stack/error leaks) |
 | `/api/health/providers` | `GET` | `{"providers":{"gemini":{"configured":true},...}}` | Sanitized AI provider status (no keys leaked) |
+| `/api/schedule/cron-trigger` | `POST` | `{"success":true,"processedCount":0}` | Serverless cron execution trigger |
 | `/api/nonexistent` | `GET` | `{"error":"Not Found","path":"/api/nonexistent"}` (Status 404) | Verifies API returns JSON, not HTML |
 
 ---

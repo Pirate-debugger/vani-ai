@@ -31,6 +31,13 @@ if (isPostgres) {
   try {
     const { PrismaBetterSqlite3 } = await import('@prisma/adapter-better-sqlite3');
     if (process.env.VERCEL) {
+      if (process.env.NODE_ENV === 'production' && process.env.ALLOW_EPHEMERAL_DB !== 'true') {
+        throw new Error(
+          'Production deployment on Vercel requires a durable PostgreSQL database. ' +
+          'Configure DATABASE_URL to a hosted PostgreSQL instance (e.g. Supabase, Neon, RDS). ' +
+          'Silent fallback to ephemeral /tmp SQLite is prohibited in production to prevent data loss.'
+        );
+      }
       const tmpDbPath = '/tmp/dev.db';
       if (!fs.existsSync(tmpDbPath)) {
         try {

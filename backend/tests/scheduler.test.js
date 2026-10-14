@@ -211,4 +211,31 @@ describe('Temporal Action Engine & Scheduler Tests', () => {
       expect(res.body.reply).toContain("Done. I'll check it Every Sunday at 8:00 PM IST.");
     });
   });
+
+  describe('Serverless Cron Trigger Webhook (/api/schedule/cron-trigger)', () => {
+    it('executes due scheduled actions and returns processed count', async () => {
+      // Create a due scheduled action
+      await prisma.scheduledAction.create({
+        data: {
+          userId: testUser.id,
+          projectId: testProject.id,
+          title: 'Due Alert',
+          actionType: 'reminder',
+          schedule: 'Every hour',
+          status: 'scheduled',
+          nextRunAt: new Date(Date.now() - 5000), // In past = due
+          payload: JSON.stringify({ message: 'Time to check metrics' })
+        }
+      });
+
+      const res = await request(app)
+        .post('/api/schedule/cron-trigger')
+        .set('x-vercel-cron', '1');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.processed).toBeGreaterThanOrEqual(1);
+    });
+  });
 });
+
